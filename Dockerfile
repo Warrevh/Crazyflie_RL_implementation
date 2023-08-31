@@ -15,8 +15,8 @@ RUN apt-get install ros-humble-tf-transformations -y
 RUN cd ~/ &&\
 	echo "source /opt/ros/humble/setup.bash &&\
 	cd ~/ros2_ws &&\
-	colcon build --symlink-install --packages-skip qualisys_driver uavTrajectoryHelpers &&\
-	colcon build --symlink-install --packages-skip uavTrajectoryHelpers" >> ~/colcon_build.sh
+	colcon build --symlink-install --packages-skip qualisys_driver &&\
+	colcon build --symlink-install" >> ~/colcon_build.sh
 RUN chmod +x ~/colcon_build.sh
 RUN echo "source ~/ros2_ws/install/setup.bash" >> ~/.bashrc
 #RUN     source /opt/ros/humble/setup.bash &&\
