@@ -19,7 +19,11 @@ Clone the repo into your home directory. Use the recursive flag to include the s
 ```
 git clone https://gitlab.liu.se/visionen/ros2/crazyswarm2.git --recurse-submodules
 ```
-Next you need to set up udev rules. Crazyswarm provides a script that does this for you.
+
+To give permissions for the software to use the usb radio, we need to add udev rules. These can be added manually as dercribed here https://www.bitcraze.io/documentation/repository/crazyflie-lib-python/master/installation/usb_permissions/
+but there should also be a script in the crazyswarm directory that does this automatically.
+
+
 ```
 cd ~/crazyswarm2/crazyswarm2
 ./pc_permissions.sh
@@ -45,11 +49,6 @@ colcon_build.sh
 ```
 
 ## Usage
-
-### UDEV rules
-
-To give permissions for the software to use the usb radio, we need to add udev rules. These can be added manually as dercribed here https://www.bitcraze.io/documentation/repository/crazyflie-lib-python/master/installation/usb_permissions/
-but there should also be a script in the crazyswarm directory that does this automatically.
 
 ### Crazyflie
 Do do changes to the crazyflie, for example changing its radio address or flashing new firmware, you can use the crazyflie client. Installation instructions can be found here https://www.bitcraze.io/documentation/repository/crazyflie-clients-python/master/installation/install/
