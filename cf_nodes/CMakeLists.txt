@@ -51,5 +51,24 @@ crazyflie_interfaces
 Eigen3
 )
 
+# Install launch and config files. 
+install(DIRECTORY 
+  launch 
+  DESTINATION share/${PROJECT_NAME}/ 
+) 
+ 
+install(TARGETS 
+  follow_platform 
+  DESTINATION lib/${PROJECT_NAME}) 
+install(TARGETS 
+  safety 
+  DESTINATION lib/${PROJECT_NAME}) 
+ 
+ament_export_dependencies( 
+        tf2 
+        tf2_ros 
+)
+
+
 
 ament_package()
