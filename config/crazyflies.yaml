@@ -1,6 +1,6 @@
 # named list of all robots
 robots:
-  cf1:
+  cf:
     enabled: true
     uri: radio://0/100/2M/E7E7E7E701
     initial_position: [0, 0, 0]
@@ -29,7 +29,7 @@ robots:
     #      vars: ["acc.x", "acc.y", "acc.z"]
 # Definition of the various robot types
 robot_types:
-  cf1:
+  cf:
     motion_capture:
       enabled: false
       # only if enabled; see motion_capture.yaml
