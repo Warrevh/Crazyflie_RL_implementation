@@ -37,11 +37,19 @@ class Safety : public rclcpp::Node
     Safety()
     : Node("safety")
     {
+      rclcpp::QoS qos = rclcpp::QoS(rclcpp::KeepLast(1));
+      qos.best_effort();
+      qos.durability_volatile();
+      //qos.lifespan(rclcpp::Duration(1000000,0));
+      //qos.deadline(rclcpp::Duration(1000000,0));
+      rmw_qos_liveliness_policy_t liveliness = RMW_QOS_POLICY_LIVELINESS_AUTOMATIC;
+      qos.liveliness(liveliness);
+      //qos.liveliness_lease_duration(rclcpp::Duration(1000000,0));
       sub_mocap = this->create_subscription<motion_capture_tracking_interfaces::msg::NamedPoseArray>(
-      "/poses", 10, std::bind(&Safety::cb_mocap, this, _1));
+      "/poses", qos, std::bind(&Safety::cb_mocap, this, _1));
       sub_cmd_pos = this->create_subscription<crazyflie_interfaces::msg::Position>(
-      "/cf1/cmd_position", 10, std::bind(&Safety::cb_cmd_pos, this, _1));
-      pub_cmd_pos = this->create_publisher<crazyflie_interfaces::msg::Position>("/cf1/cmd_position", 10);
+      "/cf1/cmd_position", qos, std::bind(&Safety::cb_cmd_pos, this, _1));
+      pub_cmd_pos = this->create_publisher<crazyflie_interfaces::msg::Position>("/cf1/cmd_position", qos);
       timer_ = this->create_wall_timer(
       500ms, std::bind(&Safety::timer_callback, this));
       client_land = this->create_client<crazyflie_interfaces::srv::Land>("cf1/land");
@@ -49,8 +57,8 @@ class Safety : public rclcpp::Node
     }
 
   private:
-    void timer_callback(){
-      count+=1;
+    void timer_callback(){	// If a cmd has not been sent to the cf for 0.5 seconds, the land client will call the land service. The subscriber
+      count+=1;			// to cmd_position will reset the timer each time its callback is run.
       //if(count<30){
 	//auto request std::make_shared<crazyflie_interfaces::srv::GoTo>;
 	//request->Point = geometry_msgs::msg::Point
@@ -63,7 +71,7 @@ class Safety : public rclcpp::Node
       client_land->async_send_request(request);
     }
     void cb_mocap(const motion_capture_tracking_interfaces::msg::NamedPoseArray & msg) const
-    {
+    {								//I have no idea what i intended with this method...
       //float px, py, pz, cf1_x, cf1_y, cf1_z;
       Vector3f p_v;
       Vector3f cf1_v;
@@ -81,9 +89,9 @@ class Safety : public rclcpp::Node
         }
       }
     }
-    void cb_cmd_pos(const crazyflie_interfaces::msg::Position & msg) const{
-      bool hinder = false;
-      count = 0;
+    void cb_cmd_pos(const crazyflie_interfaces::msg::Position & msg) const{ // Checks if a prohibited cmd command is published. If so, the callback will
+      bool hinder = false;						    // publish its own cmd, which will be the projection on the border to the
+      count = 0;							    // prohibited zone.
       auto message = crazyflie_interfaces::msg::Position();
       message.x = msg.x;
       message.y = msg.y;

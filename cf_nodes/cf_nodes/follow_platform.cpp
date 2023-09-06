@@ -4,6 +4,7 @@
 #include <chrono>
 #include <functional>
 #include <Eigen/Dense>
+#include <rmw/qos_profiles.h>
 
 #include "rclcpp/rclcpp.hpp"
 #include "std_msgs/msg/string.hpp"
@@ -24,9 +25,17 @@ class PlatformFollower : public rclcpp::Node
     PlatformFollower()
     : Node("platform_follower")
     {
+      rclcpp::QoS qos = rclcpp::QoS(rclcpp::KeepLast(1));
+      qos.best_effort();
+      qos.durability_volatile();
+      //qos.lifespan(rclcpp::Duration(1000000,0));
+      //qos.deadline(rclcpp::Duration(1000000,0));
+      rmw_qos_liveliness_policy_t liveliness = RMW_QOS_POLICY_LIVELINESS_AUTOMATIC;
+      qos.liveliness(liveliness);
+      //qos.liveliness_lease_duration(rclcpp::Duration(1000000,0));
       subscription_ = this->create_subscription<motion_capture_tracking_interfaces::msg::NamedPoseArray>(
-      "/poses", 10, std::bind(&PlatformFollower::callback, this, _1));
-      publisher_ = this->create_publisher<crazyflie_interfaces::msg::Position>("/cf1/cmd_position", 10);
+      "/poses", qos, std::bind(&PlatformFollower::callback, this, _1));
+      publisher_ = this->create_publisher<crazyflie_interfaces::msg::Position>("/cf1/cmd_position", qos);
       //timer_ = this->create_wall_timer(
       //500ms, std::bind(&MinimalPublisher::timer_callback, this));
     }
