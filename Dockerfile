@@ -11,6 +11,7 @@ RUN apt install libboost-program-options-dev libusb-1.0-0-dev -y
 RUN pip3 install cflib transforms3d
 RUN apt-get install -y python3-tk
 RUN pip3 install scipy
+RUN pip3 install rowan
 RUN apt-get install ros-humble-tf-transformations -y
 #RUN cd ~ &&\
 	#git clone -b krichardsson/qt6-v2 https://github.com/bitcraze/crazyflie-clients-python &&\
