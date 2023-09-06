@@ -1,10 +1,10 @@
 # named list of all robots
 robots:
-  cf:
+  cf1:
     enabled: true
     uri: radio://0/100/2M/E7E7E7E701
     initial_position: [0, 0, 0]
-    type: cf1  # see robot_types
+    type: cf  # see robot_types
     # firmware_params:
     #   kalman:
     #     pNAcc_xy: 1.0 # default 0.5
@@ -18,7 +18,7 @@ robots:
     enabled: false
     uri: radio://0/80/2M/E7E7E7E705
     initial_position: [0, -0.5, 0]
-    type: cf1  # see robot_types
+    type: cf  # see robot_types
     # firmware_params:
     #   kalman:
     #     pNAcc_xy: 1.0 # default 0.5
@@ -27,8 +27,20 @@ robots:
     #    topic_name3: 
     #      frequency: 1
     #      vars: ["acc.x", "acc.y", "acc.z"]
+  platform:
+    enabled: false
+    initial_position: [1,1,0]
+    type: object
+    id: 255
+
 # Definition of the various robot types
 robot_types:
+  object:
+    connection: none
+    motion_capture:
+      enabled: false
+      marker: custom_frame_1
+      dynamics: default
   cf:
     motion_capture:
       enabled: false
