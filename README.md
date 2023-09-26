@@ -57,7 +57,7 @@ To do changes to the crazyflie, for example changing its radio address or flashi
 You need to configure two things here: channel and addess. The reason is that you will have to define them later when running crazyswarm.
 
 ### Qualisys
-Before you start flying, you need to define the crazyflie as a rigid body in Qualisys. How you do this is defined in the Qualisys guide. Remember to define the cf such that its x-axis is pointing forward. (the blue LEDs are in the back). A good convention is to name the crazyflie after its address. If the address is 0xE7E7E7E702 you should name it "cf2", if the address is 0xE7E7E7E701 you should name it "cf1" and so on.
+Before you start flying, you need to define the crazyflie as a rigid body in Qualisys. How you do this is defined in the Qualisys guide (found here https://github.com/SkogsTomte/Qualisys.git). Remember to define the cf such that its x-axis is pointing forward. (the blue LEDs are in the back). A good convention is to name the crazyflie after its address. If the address is 0xE7E7E7E702 you should name it "cf2", if the address is 0xE7E7E7E701 you should name it "cf1" and so on.
 
 ### ROS
 The last thing to do before launching crazyswarm is to connect to the visionen Wi-Fi. The name is "Visionen-5GHz". You need to be connected to this nework as this is where Qualisys streams the positioning data. Note that this network is not connected to the internet, but you will quickly realize this when you try to chatGPT your way out of your problems.
