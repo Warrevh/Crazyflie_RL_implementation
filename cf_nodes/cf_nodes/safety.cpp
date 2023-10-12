@@ -45,13 +45,18 @@ class Safety : public rclcpp::Node
       rmw_qos_liveliness_policy_t liveliness = RMW_QOS_POLICY_LIVELINESS_AUTOMATIC;
       qos.liveliness(liveliness);
       //qos.liveliness_lease_duration(rclcpp::Duration(1000000,0));
+
       sub_mocap = this->create_subscription<motion_capture_tracking_interfaces::msg::NamedPoseArray>(
       "/poses", qos, std::bind(&Safety::cb_mocap, this, _1));
       sub_cmd_pos = this->create_subscription<crazyflie_interfaces::msg::Position>(
       "/cf1/cmd_position", qos, std::bind(&Safety::cb_cmd_pos, this, _1));
+      sub_cmd_vel = this->create_subscription<geometry_msgs::msg::Twist>(
+      "/cf1/cmd_vel_legacy", qos, std::bind(&Safety::cb_cmd_vel, this, _1));
+
       pub_cmd_pos = this->create_publisher<crazyflie_interfaces::msg::Position>("/cf1/cmd_position", qos);
       timer_ = this->create_wall_timer(
       500ms, std::bind(&Safety::timer_callback, this));
+
       client_land = this->create_client<crazyflie_interfaces::srv::Land>("cf1/land");
       //client_GoTo = this->create_client<crazyflie_interfaces::srv::GoTo>("cf1/goto");
     }
@@ -90,42 +95,54 @@ class Safety : public rclcpp::Node
       }
     }
     void cb_cmd_pos(const crazyflie_interfaces::msg::Position & msg) const{ // Checks if a prohibited cmd command is published. If so, the callback will
-      bool hinder = false;						    // publish its own cmd, which will be the projection on the border to the
+                  						    // publish its own cmd, which will be the projection on the border to the
       count = 0;							    // prohibited zone.
       auto message = crazyflie_interfaces::msg::Position();
       message.x = msg.x;
       message.y = msg.y;
       message.z = msg.z;
       message.yaw = msg.yaw;
-      if (msg.x < space.x_min){
-        hinder = true;
-	message.x = space.x_min;
-      }
-      else if (msg.x > space.x_max){
-	hinder = true;
-	message.x = space.x_max;
-      }
-      if (msg.y < space.y_min){
-        hinder = true;
-	message.y = space.y_min;
-      }
-      else if (msg.y > space.y_max){
-	hinder = true;
-	message.y = space.y_max;
-      }
-      if (msg.z < space.z_min){
-	hinder = true;
-	message.z = space.z_min;
-      }
-      else if (msg.z > space.z_max){
-	hinder = true;
-	message.z = space.z_max;
-      }
-
-      if (hinder){
+      if (hinder(msg)){
         pub_cmd_pos->publish(message);
       }
       timer_->reset();
+    }
+    void cb_cmd_vel(const geometry_msgs::msg::Twist& msg) const{
+      auto message = crazyflie_interfaces::msg::Position();
+      message.x = cf1_v[0];
+      message.y = cf1_v[1];
+      message.z = cf1_v[2];
+      message.yaw = cf1_v[3];
+
+      //make prediction and run hinder()
+    }
+    bool hinder(crazyflie_interfaces::msg::Position& message, const crazyflie_interfaces::msg::Position & msg){
+      bool h = false;
+      if (msg.x < space.x_min){
+        h = true;
+	      message.x = space.x_min;
+      }
+      else if (msg.x > space.x_max){
+        h = true;
+        message.x = space.x_max;
+      }
+      if (msg.y < space.y_min){
+        h = true;
+      	message.y = space.y_min;
+      }
+      else if (msg.y > space.y_max){
+        h = true;
+        message.y = space.y_max;
+      }
+      if (msg.z < space.z_min){
+        h = true;
+        message.z = space.z_min;
+      }
+      else if (msg.z > space.z_max){
+        h = true;
+        message.z = space.z_max;
+      }
+      return h
     }
     rclcpp::Subscription<motion_capture_tracking_interfaces::msg::NamedPoseArray>::SharedPtr sub_mocap;
     rclcpp::Subscription<crazyflie_interfaces::msg::Position>::SharedPtr sub_cmd_pos;
