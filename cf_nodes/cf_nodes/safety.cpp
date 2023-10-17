@@ -30,6 +30,7 @@ struct Limit
 
 Limit space(-3,3,-3,3,-0.5,8);
 int count;
+double PRED_HOR = 0.5;
 
 class Safety : public rclcpp::Node
 {
@@ -75,22 +76,25 @@ class Safety : public rclcpp::Node
       request->duration = rclcpp::Duration::from_seconds(4.0);
       client_land->async_send_request(request);
     }
-    void cb_mocap(const motion_capture_tracking_interfaces::msg::NamedPoseArray & msg) const
-    {								//I have no idea what i intended with this method...
+    void cb_mocap(const motion_capture_tracking_interfaces::msg::NamedPoseArray & msg)
+    {
       //float px, py, pz, cf1_x, cf1_y, cf1_z;
       Vector3f p_v;
       Vector3f cf1_v;
       auto message = crazyflie_interfaces::msg::Position();
       for (unsigned int i=0; i<msg.poses.size(); i++){
-        if (msg.poses[i].name == "platform"){
-          p_v[0] = msg.poses[i].pose.position.x;
-          p_v[1] = msg.poses[i].pose.position.y;
-          p_v[2] = msg.poses[i].pose.position.z + 1.0;
-        }
-        else if (msg.poses[i].name == "cf1"){
-          cf1_v[0] = msg.poses[i].pose.position.x;
-          cf1_v[1] = msg.poses[i].pose.position.y;
-          cf1_v[2] = msg.poses[i].pose.position.z;
+        // if (msg.poses[i].name == "platform"){
+        //   p_v[0] = msg.poses[i].pose.position.x;
+        //   p_v[1] = msg.poses[i].pose.position.y;
+        //   p_v[2] = msg.poses[i].pose.position.z + 1.0;
+        // }
+        if (msg.poses[i].name == "cf1"){
+          //cf1_v[0] = msg.poses[i].pose.position.x;
+          //cf1_v[1] = msg.poses[i].pose.position.y;
+          //cf1_v[2] = msg.poses[i].pose.position.z;
+          cf1_pose_.x = msg.poses[i].pose.position.x;
+          cf1_pose_.y = msg.poses[i].pose.position.y;
+          cf1_pose_.z = msg.poses[i].pose.position.z;
         }
       }
     }
@@ -102,21 +106,26 @@ class Safety : public rclcpp::Node
       message.y = msg.y;
       message.z = msg.z;
       message.yaw = msg.yaw;
-      if (hinder(msg)){
+      if (this->hinder(message,msg)){
         pub_cmd_pos->publish(message);
       }
       timer_->reset();
     }
     void cb_cmd_vel(const geometry_msgs::msg::Twist& msg) const{
       auto message = crazyflie_interfaces::msg::Position();
-      message.x = cf1_v[0];
-      message.y = cf1_v[1];
-      message.z = cf1_v[2];
-      message.yaw = cf1_v[3];
+      message.x = cf1_pose_.x;
+      message.y = cf1_pose_.y;
+      message.z = cf1_pose_.z;
+      message.yaw = cf1_pose_.yaw;
 
       //make prediction and run hinder()
+      auto pred = crazyflie_interfaces::msg::Position(message); // Right now the prediction is steady state
+      if (this->hinder(message,pred)){
+        pub_cmd_pos->publish(message);
+      }
+      timer_->reset();
     }
-    bool hinder(crazyflie_interfaces::msg::Position& message, const crazyflie_interfaces::msg::Position & msg){
+    bool hinder(crazyflie_interfaces::msg::Position& message, const crazyflie_interfaces::msg::Position & msg) const {
       bool h = false;
       if (msg.x < space.x_min){
         h = true;
@@ -142,10 +151,12 @@ class Safety : public rclcpp::Node
         h = true;
         message.z = space.z_max;
       }
-      return h
+      return h;
     }
+    crazyflie_interfaces::msg::Position cf1_pose_;
     rclcpp::Subscription<motion_capture_tracking_interfaces::msg::NamedPoseArray>::SharedPtr sub_mocap;
     rclcpp::Subscription<crazyflie_interfaces::msg::Position>::SharedPtr sub_cmd_pos;
+    rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr sub_cmd_vel;
     rclcpp::Publisher<crazyflie_interfaces::msg::Position>::SharedPtr pub_cmd_pos;
     rclcpp::TimerBase::SharedPtr timer_;
     rclcpp::Client<crazyflie_interfaces::srv::Land>::SharedPtr client_land;
