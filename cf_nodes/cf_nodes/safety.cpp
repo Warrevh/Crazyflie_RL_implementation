@@ -17,6 +17,7 @@
 #include "geometry_msgs/msg/point.hpp"
 #include "crazyflie_interfaces/msg/position.hpp"
 #include "crazyflie_interfaces/srv/land.hpp"
+#include "crazyflie_interfaces/srv/notify_setpoints_stop.hpp"
 // #include "crazyflie_interfaces/srv/Stop.hpp"
 //#include "crazyflie_interfaces/srv/goto.hpp"
 
@@ -68,7 +69,8 @@ class Safety : public rclcpp::Node
       500ms, std::bind(&Safety::timer_callback, this));
       pub_cmd_vel_ = this->create_publisher<geometry_msgs::msg::Twist>("/cf2/cmd_vel_legacy", 10);
 
-      client_land = this->create_client<crazyflie_interfaces::srv::Land>("cf2/land");
+      client_land_ = this->create_client<crazyflie_interfaces::srv::Land>("cf2/land");
+      client_notify_setpoints_stop_ = this->create_client<crazyflie_interfaces::srv::NotifySetpointsStop>("notify_setpoints_stop");
       // client_stop = this->create_client<crazyflie_interfaces::srv::Stop>("cf2/emergency");
       //client_GoTo = this->create_client<crazyflie_interfaces::srv::GoTo>("cf2/goto");
     }
@@ -77,19 +79,43 @@ class Safety : public rclcpp::Node
     void cmd_land(){
       std::cout << "here" << std::endl;
       land_started_ = true;
-      rclcpp::Rate rate(10);
+      rclcpp::Rate rate(20);
       auto message = crazyflie_interfaces::msg::Position();
       message.x = cf2_pose_.x;
       message.y = cf2_pose_.y;
       message.z = cf2_pose_.z;
-      while(message.z > 0.02){
+      while(message.z > 0.03){
         std::cout << "in loop" << std::endl;
-        if (message.z - cf2_pose_.z < 0.02){
-          message.z = message.z -0.01;
+        if (message.z - cf2_pose_.z < 0.1){
+          message.z = message.z -0.02;
         }
         pub_cmd_pos->publish(message);
         rate.sleep();
       }
+      for (size_t i = 0; i < 10; i++){
+        pub_cmd_pos->publish(message);
+        rate.sleep();
+      }
+      
+      auto message_vel = geometry_msgs::msg::Twist();
+      message_vel.linear.y = 0.0;
+      message_vel.linear.x = 0.0;
+      message_vel.linear.z = 0.0;
+      message_vel.angular.z = 0.0;
+      pub_cmd_vel_->publish(message_vel);
+      // auto request1 = std::make_shared<crazyflie_interfaces::srv::NotifySetpointsStop::Request>();
+      // request1->remain_valid_millisecs = 1;
+      // request1->group_mask = 0;
+      // client_notify_setpoints_stop_->async_send_request(request1);
+
+      // auto request2 = std::make_shared<crazyflie_interfaces::srv::Land::Request>();
+      // //request2->group_mask = 0;
+      // request2->height = 0.04;
+      // request2->duration = rclcpp::Duration::from_seconds(3);
+      // rclcpp::sleep_for(2ms);
+      // client_land_->async_send_request(request2);
+      // rclcpp::sleep_for(3500ms);
+
       // auto request = std::make_shared<crazyflie_interfaces::srv::Stop::Request>();
       // //request->group_mask = 0;
       // client_stop->async_send_request(request);
@@ -238,7 +264,8 @@ class Safety : public rclcpp::Node
     rclcpp::Publisher<crazyflie_interfaces::msg::Position>::SharedPtr pub_cmd_pos;
     rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr pub_cmd_vel_;
     rclcpp::TimerBase::SharedPtr timer_;
-    rclcpp::Client<crazyflie_interfaces::srv::Land>::SharedPtr client_land;
+    rclcpp::Client<crazyflie_interfaces::srv::Land>::SharedPtr client_land_;
+    rclcpp::Client<crazyflie_interfaces::srv::NotifySetpointsStop>::SharedPtr client_notify_setpoints_stop_;
     // rclcpp::Client<crazyflie_interfaces::srv::Stop>::SharedPtr client_stop;
 };
 
