@@ -20,7 +20,7 @@ Clone the repo into your home directory. Use the recursive flag to include the s
 git clone https://gitlab.liu.se/visionen/ros2/crazyswarm2.git --recurse-submodules
 ```
 
-To give permissions for the software to use the usb radio, we need to add udev rules. These can be added manually as dercribed here https://www.bitcraze.io/documentation/repository/crazyflie-lib-python/master/installation/usb_permissions/
+To give permissions for the software to use the usb radio, we need to add udev rules. These can be added manually as dercribed [here](https://www.bitcraze.io/documentation/repository/crazyflie-lib-python/master/installation/usb_permissions/)
 but there should also be a script in the crazyswarm directory that does this automatically.
 
 
@@ -52,12 +52,14 @@ source ros2_ws/install/setup.bash
 ## Usage
 
 ### Crazyflie
-To do changes to the crazyflie, for example changing its radio address or flashing new firmware, you can use the crazyflie client. For some reason this client does not work in the container, so you will have to install it on your host. Installation instructions can be found here https://www.bitcraze.io/documentation/repository/crazyflie-clients-python/master/installation/install/
+
+To do changes to the crazyflie, for example changing its radio address or flashing new firmware, you can use the crazyflie client. For some reason this client does not work in the container, so you will have to install it on your host. Installation instructions can be found [here](https://www.bitcraze.io/documentation/repository/crazyflie-clients-python/master/installation/install/)
 
 You need to configure two things here: channel and addess. The reason is that you will have to define them later when running crazyswarm.
 
 ### Qualisys
-Before you start flying, you need to define the crazyflie as a rigid body in Qualisys. How you do this is defined in the Qualisys guide (found here https://github.com/SkogsTomte/Qualisys.git). Remember to define the cf such that its x-axis is pointing forward. (the blue LEDs are in the back). A good convention is to name the crazyflie after its address. If the address is 0xE7E7E7E702 you should name it "cf2", if the address is 0xE7E7E7E701 you should name it "cf1" and so on.
+Before you start flying, you need to define the crazyflie as a rigid body in Qualisys. How you do this is defined in the Qualisys guide (found [here](	
+https://gitlab.liu.se/visionen/documents/-/jobs/313272/artifacts/raw/main.pdf?inline=false)). Remember to define the cf such that its x-axis is pointing forward. (the blue LEDs are in the back). A good convention is to name the crazyflie after its address. If the address is 0xE7E7E7E702 you should name it "cf2", if the address is 0xE7E7E7E701 you should name it "cf1" and so on.
 
 ### ROS
 The last thing to do before launching crazyswarm is to connect to the visionen Wi-Fi. The name is "Visionen-5GHz". You need to be connected to this nework as this is where Qualisys streams the positioning data. Note that this network is not connected to the internet, but you will quickly realize this when you try to chatGPT your way out of your problems.
@@ -77,11 +79,11 @@ When writing your own scripts, they can preferably be put in the ros2_ws/src/cf_
 
 ## Resources
 
-If you are new to ROS, it is recomended to go through some of the tutorials here: http://docs.ros.org/en/humble/Tutorials.html
+If you are new to ROS, it is recomended to go through some of the tutorials [here](http://docs.ros.org/en/humble/Tutorials.html)
 
-For more information about crazyswarm2 you can look at the documentation here: https://imrclab.github.io/crazyswarm2/
+For more information about crazyswarm2 you can look at the documentation [here](https://imrclab.github.io/crazyswarm2/)
 
-If you are interested to flash your own firmware (for example to add your own controller) instructions can be found here: https://www.bitcraze.io/documentation/repository/crazyflie-firmware/master/building-and-flashing/build/
-and here: https://www.bitcraze.io/2023/02/adding-an-estimator-or-controller/
+If you are interested to flash your own firmware (for example to add your own controller) instructions can be found [here](https://www.bitcraze.io/documentation/repository/crazyflie-firmware/master/building-and-flashing/build/)
+and [here](https://www.bitcraze.io/2023/02/adding-an-estimator-or-controller/)
 
-Intesesting reading: https://www.sciencedirect.com/science/article/pii/S2405896322010060
+Intesesting reading: [Nonlinear Control Method for Backflipping with Miniature Quadcopters](https://www.sciencedirect.com/science/article/pii/S2405896322010060)
