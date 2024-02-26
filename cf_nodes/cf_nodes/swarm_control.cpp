@@ -16,7 +16,7 @@
 #include "crazyflie_interfaces/msg/position.hpp"
 #include "crazyflie_interfaces/srv/land.hpp"
 #include "crazyflie_interfaces/srv/takeoff.hpp"
-#include "yaml.h"
+#include "yaml-cpp/yaml.h"
 
 
 using std::placeholders::_1;
@@ -58,7 +58,6 @@ class SwarmControl : public rclcpp::Node
     void read_config(const char* config_path)
     {
         YAML::Node config = YAML::LoadFile(config_path);
-        return 0;
     }
     
     void callback(const motion_capture_tracking_interfaces::msg::NamedPoseArray & msg) const
