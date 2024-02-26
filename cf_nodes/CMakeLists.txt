@@ -13,6 +13,7 @@ find_package(Eigen3 REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(SDL2 REQUIRED)
+find_package(yaml-cpp)
 
 include_directories(/usr/include/eigen3)
 include_directories(
@@ -40,6 +41,17 @@ geometry_msgs
 motion_capture_tracking_interfaces
 crazyflie_interfaces
 Eigen3
+)
+add_executable(swarm_control
+  cf_nodes/swarm_control.cpp
+)
+ament_target_dependencies(swarm_control
+rclcpp
+geometry_msgs
+motion_capture_tracking_interfaces
+crazyflie_interfaces
+Eigen3
+yaml-cpp
 )
 
 add_executable(safety
