@@ -52,6 +52,8 @@ geometry_msgs
 motion_capture_tracking_interfaces
 crazyflie_interfaces
 Eigen3
+tf2
+tf2_ros
 )
 target_link_libraries(swarm_control ${YAMLCPP_LIBRARIES})
 

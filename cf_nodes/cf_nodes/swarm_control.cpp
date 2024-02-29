@@ -8,6 +8,7 @@
 #include <fstream>
 #include <vector>
 #include <thread>
+#include <tf2/LinearMath/Quaternion.h>
 
 #include "rclcpp/rclcpp.hpp"
 #include "std_msgs/msg/string.hpp"
@@ -37,17 +38,32 @@ struct CF
     rclcpp::Publisher<crazyflie_interfaces::msg::Position>::SharedPtr pub;
 };
 
+struct Hand
+{
+    float x;
+    float y;
+    float z;
+    tf2::Quaternion q;
+};
+
 
 class SwarmControl : public rclcpp::Node
 {
   public:
-    std::vector<int> ids;
     std::vector<std::string> names;
-    std::vector<CF> cfs;
+    std::vector<CF*> cfs;
+    std::unordered_map<std::string,CF*> cfs_map;
+    Hand hand;
 
     SwarmControl()
     : Node("swarm_control")
     {
+        hand.x = 0.5;
+        hand.y = 0.5;
+        hand.z = 0.2;
+        hand.q = tf2::Quaternion(0, 0, 0.258819, 0.9659258);
+        float offset_x[4] = {1,0,-1,0};
+        float offset_y[4] = {0,-1,0,1};
         const char* config_path = "/root/ros2_ws/src/crazyswarm2/crazyflie/config/crazyflies.yaml";
         read_config(config_path);
         rclcpp::QoS qos = rclcpp::QoS(rclcpp::KeepLast(1));
@@ -55,8 +71,6 @@ class SwarmControl : public rclcpp::Node
         qos.durability_volatile();
         rmw_qos_liveliness_policy_t liveliness = RMW_QOS_POLICY_LIVELINESS_AUTOMATIC;
         qos.liveliness(liveliness);
-        subscription_ = this->create_subscription<motion_capture_tracking_interfaces::msg::NamedPoseArray>(
-        "/poses", qos, std::bind(&SwarmControl::qtm_callback, this, _1));
         std::cout << names.size() << "active crazyflies: " << std::endl;
         CF* cf;
         std::string topic;
@@ -67,22 +81,23 @@ class SwarmControl : public rclcpp::Node
             cf->x = 0;
             cf->y = 0;
             cf->z = 0;
-            cf->x_r = 0;
-            cf->y_r = 0;
-            cf->z_r = 0;
+            cf->x_r = offset_x[i];
+            cf->y_r = offset_y[i];
+            cf->z_r = 1;
             cf->yaw = 0;
             topic = "/cf/cmd_position";
             for (size_t j = 0; j < names[i].size()-2; j++) //Run the loop once if cfx, twice if cfxx and so on
             {
                 topic.insert(3+j,1,names[i][2+j]);
             }          
-            // topic = "/cfx/cmd_position"; //OBS OBS OBS only handles ids up to 9
-            // topic[3] = names[i][2];
             cf->pub = this->create_publisher<crazyflie_interfaces::msg::Position>(topic,qos); 
-            cfs.push_back(*cf);
+            cfs.push_back(cf);
+            cfs_map[names[i]] = cf;
         }
         timer_ = this->create_wall_timer(
         10ms, std::bind(&SwarmControl::swarm_callback, this));
+        subscription_ = this->create_subscription<motion_capture_tracking_interfaces::msg::NamedPoseArray>(
+        "/poses", qos, std::bind(&SwarmControl::qtm_callback, this, _1));
         // auto request = std::make_shared<crazyflie_interfaces::srv::Takeoff::Request>();
         // //request->group_mask = 0;
         // request->height = 1.0;
@@ -112,7 +127,6 @@ class SwarmControl : public rclcpp::Node
                 attributes = it->second;
                 if(attributes["enabled"].as<bool>())
                 {
-                    //ids.push_back(std::stoi(robot_name[2]));// OBS OBS OBS does not handle ids over 9
                     names.push_back(robot_name);
                 }
             }
@@ -121,51 +135,48 @@ class SwarmControl : public rclcpp::Node
 
     void swarm_callback()
     {
-        if(true)//New controller pose
+        CF cf;
+        tf2::Quaternion cfq;
+        float x;
+        float y;
+        float z;
+        auto message = crazyflie_interfaces::msg::Position();
+        tf2::Quaternion handq_prime = tf2::Quaternion(hand.q);
+        handq_prime[0] = handq_prime[0]*-1; handq_prime[1] = handq_prime[1]*-1; handq_prime[2] = handq_prime[2]*-1;
+        for (size_t i = 0; i < cfs.size(); i++)
         {
-            return;//Calculate new cf poses
+            cf = *(cfs[i]);
+            cfq = tf2::Quaternion(cf.x_r,cf.y_r,cf.z_r,0);
+            cfq = hand.q*cfq*handq_prime;
+            // message.x = hand.x+cf.x_r;
+            // message.y = hand.y+cf.y_r;
+            // message.z = hand.z+cf.z_r;
+            message.x = hand.x+cfq[0];
+            message.y = hand.y+cfq[1];
+            message.z = hand.z+cfq[2];
+            // message.yaw = hand.yaw;
+            cf.pub->publish(message);
         }
-        //Publish cf poses
     }
 
-    std::vector<int> qtm_callback(const motion_capture_tracking_interfaces::msg::NamedPoseArray & msg) const
+    void qtm_callback(const motion_capture_tracking_interfaces::msg::NamedPoseArray & msg)
     {
-        //float px, py, pz, cf2_x, cf2_y, cf2_z;
         Vector3f p_v; 
         Vector3f cf2_v;
         auto message = crazyflie_interfaces::msg::Position();
         for (unsigned int i=0; i<msg.poses.size(); i++){
-            if (msg.poses[i].name == "platform"){
-            p_v[0] = msg.poses[i].pose.position.x;
-        p_v[1] = msg.poses[i].pose.position.y;
-        p_v[2] = msg.poses[i].pose.position.z + 1.0; 
+            if (msg.poses[i].name == "hand"){
+                hand.x = msg.poses[i].pose.position.x;
+                hand.y = msg.poses[i].pose.position.y;
+                hand.z = msg.poses[i].pose.position.z;
+                hand.q = tf2::Quaternion(msg.poses[i].pose.orientation.x,msg.poses[i].pose.orientation.y,msg.poses[i].pose.orientation.z,msg.poses[i].pose.orientation.w);
+            }
+            // else if (msg.poses[i].name[0]=='c' && msg.poses[i].name[1]=='f'){
+            //     cfs_map[msg.poses[i].name]->x = msg.poses[i].pose.position.x;
+            //     cfs_map[msg.poses[i].name]->y = msg.poses[i].pose.position.y;
+            //     cfs_map[msg.poses[i].name]->z = msg.poses[i].pose.position.z;
+            // }
         }
-        else if (msg.poses[i].name == "cf2"){
-            cf2_v[0] = msg.poses[i].pose.position.x;
-            cf2_v[1] = msg.poses[i].pose.position.y;
-            cf2_v[2] = msg.poses[i].pose.position.z;
-        }
-        }
-        Vector3f d = p_v-cf2_v;
-        float dist = d.norm();
-        if (dist < 0.7){
-            message.x = p_v[0]; 
-            message.y = p_v[1];
-            message.z = p_v[2];
-        }
-        else{
-            Vector3f targ = cf2_v + (d/dist)*0.7;
-            message.x = targ[0];
-            message.y = targ[1];
-            message.z = targ[2];
-        }
-        if (d[2] < -0.3){
-            message.z = cf2_v[2]-0.3;
-        }
-        if (d[2] > 0.3){
-            message.z = cf2_v[2]+0.3;
-        }
-        publisher_->publish(message);
     }
 };
 
