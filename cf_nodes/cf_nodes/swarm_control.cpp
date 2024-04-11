@@ -53,7 +53,7 @@ public:
     }
 };
 
-struct Hand
+struct Pose
 {
     float x;
     float y;
@@ -68,17 +68,15 @@ class SwarmControl : public rclcpp::Node
     std::vector<std::string> names;
     std::vector<CF*> cfs;
     std::unordered_map<std::string,CF*> cfs_map;
-    Hand hand_r;
-    Hand hand_l;
-    Hand hand_stat; // Used to store the most recent pose of the right hand when in mode 1
+    Pose hand_r;
+    Pose hand_l;
+    Pose hand_stat; // Used to store the most recent pose of the right hand when in mode 1
     // Mode is changed with the angle of the left hand
     int mode; // 0: "Hold" the swarm does not react to the right hand
               // 1: "Follow" the pose of the swarm changes with the pose of the right hand
               // 2: "Formation" the formation of the swarm changes with the movements of the right hand
     // Swarm origin relative to the right hand
-    float swarm_x;
-    float swarm_y;
-    float swarm_z;
+    Pose swarm;
 
     SwarmControl()
     : Node("swarm_control")
@@ -92,9 +90,9 @@ class SwarmControl : public rclcpp::Node
         hand_stat.y = 0.0;
         hand_stat.z = 0.0;
         hand_stat.q = tf2::Quaternion(0, 0, 0, 1);
-        swarm_x = 1.0;
-        swarm_y = 0.0;
-        swarm_z = 0.5;
+        swarm.x = 1.0;
+        swarm.y = 0.0;
+        swarm.z = 0.5;
         float offset_x[6] = {-0.5,-0.5,-0.5,0,0,0.5};
         float offset_y[6] = {0,-1,1,-0.5,0.5,0};
         float offset_z[6] = {0,0,0,0,0,0};
@@ -191,12 +189,30 @@ class SwarmControl : public rclcpp::Node
             {
                 cf = *(cfs[i]);
                 //Transforming cf from swarm frame, to hand frame, to world frame
-                cfq = tf2::Quaternion(cf.x_r+swarm_x,cf.y_r+swarm_y,cf.z_r+swarm_z,0);//Rotation of cf in world frame
+                cfq = tf2::Quaternion(cf.x_r+swarm.x,cf.y_r+swarm.y,cf.z_r+swarm.z,0);//Rotation of cf in world frame
                 cfq = hand_stat.q*cfq*handq_prime;//Rotation
                 message.x = hand_stat.x+cfq[0];//Translation
                 message.y = hand_stat.y+cfq[1];
                 message.z = hand_stat.z+cfq[2];
                 // message.yaw = hand.yaw;
+
+                // Safety to prevent risky cmds
+                Vector3f target;    target[0] = message.x;  target[1] = message.y;  target[2] = message.z;
+                Vector3f cf_v;     cf_v[0] = cf.x;  cf_v[1] = cf.y;  cf_v[2] = cf.z;
+                Vector3f d = target-cf_v;
+                float dist = d.norm();
+                if (dist < 0.3){
+                    message.x = target[0]; 
+                    message.y = target[1];
+                    message.z = target[2];
+                }
+                else{
+                    Vector3f new_target = cf_v + (d/dist)*0.3;
+                    message.x = new_target[0];
+                    message.y = new_target[1];
+                    message.z = new_target[2];
+                }
+
                 cf.pub->publish(message);
             }
             break;
@@ -209,12 +225,30 @@ class SwarmControl : public rclcpp::Node
             {
                 cf = *(cfs[i]);
                 //Transforming cf from swarm frame, to hand frame, to world frame
-                cfq = tf2::Quaternion(cf.x_r+swarm_x,cf.y_r+swarm_y,cf.z_r+swarm_z,0);//Rotation of cf in world frame
+                cfq = tf2::Quaternion(cf.x_r+swarm.x,cf.y_r+swarm.y,cf.z_r+swarm.z,0);//Rotation of cf in world frame
                 cfq = hand_r.q*cfq*handq_prime;//Rotation
                 message.x = hand_r.x+cfq[0];//Translation
                 message.y = hand_r.y+cfq[1];
                 message.z = hand_r.z+cfq[2];
                 // message.yaw = hand.yaw;
+                
+                // Safety to prevent risky cmds
+                Vector3f target;    target[0] = message.x;  target[1] = message.y;  target[2] = message.z;
+                Vector3f cf_v;     cf_v[0] = cf.x;  cf_v[1] = cf.y;  cf_v[2] = cf.z;
+                Vector3f d = target-cf_v;
+                float dist = d.norm();
+                if (dist < 0.3){
+                    message.x = target[0]; 
+                    message.y = target[1];
+                    message.z = target[2];
+                }
+                else{
+                    Vector3f new_target = cf_v + (d/dist)*0.3;
+                    message.x = new_target[0];
+                    message.y = new_target[1];
+                    message.z = new_target[2];
+                }
+
                 cf.pub->publish(message);
             }
             break;
@@ -228,7 +262,7 @@ class SwarmControl : public rclcpp::Node
             {
                 cf = *(cfs[i]);
                 //Transforming cf from swarm frame, to hand frame, to world frame
-                cfq = tf2::Quaternion(cf.x_r+swarm_x,cf.y_r+swarm_y,cf.z_r+swarm_z,0);//Rotation of cf in world frame
+                cfq = tf2::Quaternion(cf.x_r+swarm.x,cf.y_r+swarm.y,cf.z_r+swarm.z,0);//Rotation of cf in world frame
                 cfq = hand_stat.q*cfq*handq_prime;//Rotation
                 message.x = hand_stat.x+cfq[0];//Translation
                 message.y = hand_stat.y+cfq[1];
@@ -262,9 +296,9 @@ class SwarmControl : public rclcpp::Node
         {
             if (mode != 1)
             {
-                swarm_x += (hand_stat.x-hand_r.x);
-                swarm_y += (hand_stat.y-hand_r.y);
-                swarm_z += (hand_stat.z-hand_r.z);
+                swarm.x += (hand_stat.x-hand_r.x);
+                swarm.y += (hand_stat.y-hand_r.y);
+                swarm.z += (hand_stat.z-hand_r.z);
             }
             hand_stat.x = hand_r.x;
             hand_stat.y = hand_r.y;
@@ -272,10 +306,10 @@ class SwarmControl : public rclcpp::Node
             hand_stat.q = tf2::Quaternion(hand_r.q[0], hand_r.q[1], hand_r.q[2], hand_r.q[3]);
             mode = 1;
         }
-        std::cout << "Mode: " << mode << std::endl;
-        std::cout << "Hand right: " << hand_r.x << "," << hand_r.y << "," << hand_r.z << std::endl;
-        std::cout << "Hand static: " << hand_stat.x << "," << hand_stat.y << "," << hand_stat.z << std::endl;
-        std::cout << "Swarm: " << swarm_x << "," << swarm_y << "," << swarm_z << std::endl;
+        // std::cout << "Mode: " << mode << std::endl;
+        // std::cout << "Hand right: " << hand_r.x << "," << hand_r.y << "," << hand_r.z << std::endl;
+        // std::cout << "Hand static: " << hand_stat.x << "," << hand_stat.y << "," << hand_stat.z << std::endl;
+        // std::cout << "Swarm: " << swarm.x << "," << swarm.y << "," << swarm.z << std::endl;
     }
 
     // void mode_callback()
@@ -332,7 +366,7 @@ class SwarmControl : public rclcpp::Node
 
     void qtm_callback(const motion_capture_tracking_interfaces::msg::NamedPoseArray & msg)
     {
-        Vector3f p_v; 
+        Vector3f target; 
         Vector3f cf2_v;
         auto message = crazyflie_interfaces::msg::Position();
         for (unsigned int i=0; i<msg.poses.size(); i++){
@@ -348,11 +382,12 @@ class SwarmControl : public rclcpp::Node
                 hand_l.z = msg.poses[i].pose.position.z;
                 hand_l.q = tf2::Quaternion(msg.poses[i].pose.orientation.x,msg.poses[i].pose.orientation.y,msg.poses[i].pose.orientation.z,msg.poses[i].pose.orientation.w);
             }
-            // else if (msg.poses[i].name[0]=='c' && msg.poses[i].name[1]=='f'){
-            //     cfs_map[msg.poses[i].name]->x = msg.poses[i].pose.position.x;
-            //     cfs_map[msg.poses[i].name]->y = msg.poses[i].pose.position.y;
-            //     cfs_map[msg.poses[i].name]->z = msg.poses[i].pose.position.z;
-            // }
+            else if (msg.poses[i].name[0]=='c' && msg.poses[i].name[1]=='f'){
+                cfs_map[msg.poses[i].name]->x = msg.poses[i].pose.position.x;
+                cfs_map[msg.poses[i].name]->y = msg.poses[i].pose.position.y;
+                cfs_map[msg.poses[i].name]->z = msg.poses[i].pose.position.z;
+                // std::cout << msg.poses[i].name << ": " << cfs_map[msg.poses[i].name]->x << "," << cfs_map[msg.poses[i].name]->y << "," << cfs_map[msg.poses[i].name]->z << std::endl;
+            }
         }
     }
 };
