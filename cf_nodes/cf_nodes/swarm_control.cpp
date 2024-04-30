@@ -283,21 +283,26 @@ class SwarmControl : public rclcpp::Node
                 // message.yaw = hand.yaw;
 
                 // Safety to prevent risky cmds. First we put a limit on the distance between the cf and the target.
+                transformStamped = tf_buffer_->lookupTransform("world", names[i], this->get_clock()->now(), rclcpp::Duration::from_seconds(1.0));
                 Vector3f target;    target[0] = message.x;  target[1] = message.y;  target[2] = message.z;
-                Vector3f cf_v;      cf_v[0]   = cf->x;       cf_v[1]   = cf->y;       cf_v[2]   = cf->z;
-                Vector3f d = target-cf_v;
-                float dist = d.norm();
-                if (dist < 0.3){
-                    message.x = target[0]; 
-                    message.y = target[1];
-                    message.z = target[2];
-                }
-                else{
-                    Vector3f new_target = cf_v + (d/dist)*0.3;
-                    message.x = new_target[0];
-                    message.y = new_target[1];
-                    message.z = new_target[2];
-                }
+                Vector3f cf_v;
+                cf_v[0] = transformStamped.transform.translation.x;
+                cf_v[1] = transformStamped.transform.translation.y;
+                cf_v[2] = transformStamped.transform.translation.z;
+
+                // Vector3f d = target-cf_v;
+                // float dist = d.norm();
+                // if (dist < 0.3){
+                //     message.x = target[0]; 
+                //     message.y = target[1];
+                //     message.z = target[2];
+                // }
+                // else{
+                //     Vector3f new_target = cf_v + (d/dist)*0.3;
+                //     message.x = new_target[0];
+                //     message.y = new_target[1];
+                //     message.z = new_target[2];
+                // }
                 // Calculate the average of the message and the 5 previous messages
                 float avg_x = 0.0;
                 float avg_y = 0.0;
@@ -324,9 +329,10 @@ class SwarmControl : public rclcpp::Node
                 avg_z /= count;
 
                 // Update the message with the average values
-                // message.x = avg_x;
-                // message.y = avg_y;
-                // message.z = avg_z;
+                message.x = avg_x;
+                message.y = avg_y;
+                message.z = avg_z;
+                // std::cout << "CF: " << names[i] << " x: " << message.x << " y: " << message.y << " z: " << message.z << std::endl;
                 
                 cf->pub->publish(message);
                 cf->updateCmdBuffer(message.x, message.y, message.z, 0);
