@@ -15,11 +15,13 @@
 #include "std_msgs/msg/string.hpp"
 #include "motion_capture_tracking_interfaces/msg/named_pose_array.hpp"
 #include "geometry_msgs/msg/twist.hpp"
+#include "geometry_msgs/msg/point.hpp"
 #include "geometry_msgs/msg/pose_stamped.hpp"
 #include "geometry_msgs/msg/transform_stamped.hpp"
 #include "crazyflie_interfaces/msg/position.hpp"
 #include "crazyflie_interfaces/srv/land.hpp"
 #include "crazyflie_interfaces/srv/takeoff.hpp"
+#include "crazyflie_interfaces/srv/go_to.hpp"
 #include "yaml-cpp/yaml.h"
 #include "tf2/LinearMath/Quaternion.h"
 #include "tf2_ros/static_transform_broadcaster.h"
@@ -47,6 +49,7 @@ public:
 
     rclcpp::Publisher<crazyflie_interfaces::msg::Position>::SharedPtr pub;
     rclcpp::Client<crazyflie_interfaces::srv::Takeoff>::SharedPtr takeoff_cli;
+    rclcpp::Client<crazyflie_interfaces::srv::GoTo>::SharedPtr goto_cli;
     // Function to change cf's pose in the formation
     std::shared_ptr<tf2_ros::StaticTransformBroadcaster> tf_static_broadcaster;
 private:
@@ -166,8 +169,8 @@ class SwarmControl : public rclcpp::Node
         t.transform.translation.z = swarm.z;
         tf_static_broadcaster_->sendTransform(t);
 
-        float offset_x[6] = {-0.5, -0.5, -0.5,  0  , 0  , 0.5};
-        float offset_y[6] = { 0  , -1  ,  1  , -0.5, 0.5, 0  };
+        float offset_x[6] = { 0.5, -0.5, -0.5,  0  , 0  , -0.5};
+        float offset_y[6] = { 0  , -1  ,  1  , -0.5, 0.5,  0  };
         float offset_z[6] = {0,0,0,0,0,0};
         const char* config_path = "/root/ros2_ws/src/crazyswarm2/crazyflie/config/crazyflies.yaml";
         read_config(config_path);
@@ -179,10 +182,21 @@ class SwarmControl : public rclcpp::Node
         std::cout << names.size() << " active crazyflies: " << std::endl;
         CF* cf;
         std::string cmd_topic;
-        std::string service;
+        std::string takeoff_service, goto_service;
         auto request = std::make_shared<crazyflie_interfaces::srv::Takeoff::Request>();
         request->height = 0.5;
         request->duration = rclcpp::Duration::from_seconds(2.0);
+        auto goto_request = std::make_shared<crazyflie_interfaces::srv::GoTo::Request>();
+        geometry_msgs::msg::Point goal;
+        goal.x = 0.0;
+        goal.y = 0.0;
+        goal.z = 0.5;
+        goto_request->goal = goal;
+        goto_request->yaw = 0.0;
+        goto_request->duration = rclcpp::Duration::from_seconds(2.0);
+        goto_request->relative = false;
+        // goto_request->group_mask = 0;
+        geometry_msgs::msg::TransformStamped transformStamped;
         for (size_t i = 0; i < names.size(); i++)
         {   
             std::cout << names[i] << std::endl;
@@ -196,11 +210,13 @@ class SwarmControl : public rclcpp::Node
             cf->x_r_base = offset_x[i]; cf->y_r_base = offset_y[i]; cf->z_r_base = offset_z[i];
             cf->yaw = 0;
             cmd_topic = "/cf/cmd_position";
-            service = "/cf/takeoff";
+            takeoff_service = "/cf/takeoff";
+            goto_service = "/cf/go_to";
             for (size_t j = 0; j < names[i].size()-2; j++) //Run the loop once if cfx, twice if cfxx and so on
             {
                 cmd_topic.insert(3+j,1,names[i][2+j]);
-                service.insert(3+j,1,names[i][2+j]);
+                takeoff_service.insert(3+j,1,names[i][2+j]);
+                goto_service.insert(3+j,1,names[i][2+j]);
             }
             t.header.frame_id = "swarm";
             t.child_frame_id = (names[i]+"_ref");
@@ -208,13 +224,23 @@ class SwarmControl : public rclcpp::Node
             t.transform.translation.y = offset_y[i];
             t.transform.translation.z = offset_z[i];
             tf_static_broadcaster_->sendTransform(t);
+            rclcpp::sleep_for(2000ms); // Sleep to make sure the transform is published before the cf starts to takeoff
             cf->pub = this->create_publisher<crazyflie_interfaces::msg::Position>(cmd_topic,qos); 
-            cf->takeoff_cli = this->create_client<crazyflie_interfaces::srv::Takeoff>(service);
+            cf->takeoff_cli = this->create_client<crazyflie_interfaces::srv::Takeoff>(takeoff_service);
+            cf->goto_cli = this->create_client<crazyflie_interfaces::srv::GoTo>(goto_service);
+            cf->tf_static_broadcaster = tf_static_broadcaster_;
             cfs.push_back(cf);
             cfs_map[names[i]] = cf;
+            transformStamped = 
+                tf_buffer_->lookupTransform("world", names[i]+"_ref", this->get_clock()->now(), rclcpp::Duration::from_seconds(1.0));
             cf->takeoff_cli->async_send_request(request);
+            goto_request->goal.x = transformStamped.transform.translation.x;
+            goto_request->goal.y = transformStamped.transform.translation.y;
+            goto_request->goal.z = transformStamped.transform.translation.z;
+            cf->goto_cli->async_send_request(goto_request);
         }
-        rclcpp::sleep_for(2500ms);
+        std::cout << "All crazyflies are initialized" << std::endl;
+        rclcpp::sleep_for(5000ms);
         timer_ = this->create_wall_timer(
         10ms, std::bind(&SwarmControl::swarm_callback, this));
         timer_slow_ = this->create_wall_timer(
@@ -280,29 +306,7 @@ class SwarmControl : public rclcpp::Node
                 message.x = transformStamped.transform.translation.x;
                 message.y = transformStamped.transform.translation.y;
                 message.z = transformStamped.transform.translation.z;
-                // message.yaw = hand.yaw;
 
-                // Safety to prevent risky cmds. First we put a limit on the distance between the cf and the target.
-                transformStamped = tf_buffer_->lookupTransform("world", names[i], this->get_clock()->now(), rclcpp::Duration::from_seconds(1.0));
-                Vector3f target;    target[0] = message.x;  target[1] = message.y;  target[2] = message.z;
-                Vector3f cf_v;
-                cf_v[0] = transformStamped.transform.translation.x;
-                cf_v[1] = transformStamped.transform.translation.y;
-                cf_v[2] = transformStamped.transform.translation.z;
-
-                // Vector3f d = target-cf_v;
-                // float dist = d.norm();
-                // if (dist < 0.3){
-                //     message.x = target[0]; 
-                //     message.y = target[1];
-                //     message.z = target[2];
-                // }
-                // else{
-                //     Vector3f new_target = cf_v + (d/dist)*0.3;
-                //     message.x = new_target[0];
-                //     message.y = new_target[1];
-                //     message.z = new_target[2];
-                // }
                 // Calculate the average of the message and the 5 previous messages
                 float avg_x = 0.0;
                 float avg_y = 0.0;
@@ -362,23 +366,6 @@ class SwarmControl : public rclcpp::Node
                 message.z = transformStamped.transform.translation.z;
                 // message.yaw = hand.yaw;
 
-                // Safety to prevent risky cmds. First we put a limit on the distance between the cf and the target.
-                Vector3f target;    target[0] = message.x;  target[1] = message.y;  target[2] = message.z;
-                Vector3f cf_v;      cf_v[0]   = cf->x;       cf_v[1]   = cf->y;       cf_v[2]   = cf->z;
-                Vector3f d = target-cf_v;
-                float dist = d.norm();
-                if (dist < 0.3){
-                    message.x = target[0]; 
-                    message.y = target[1];
-                    message.z = target[2];
-                }
-                else{
-                    Vector3f new_target = cf_v + (d/dist)*0.3;
-                    message.x = new_target[0];
-                    message.y = new_target[1];
-                    message.z = new_target[2];
-                }
-                // Calculate the average of the message and the 5 previous messages
                 float avg_x = 0.0;
                 float avg_y = 0.0;
                 float avg_z = 0.0;
@@ -404,9 +391,9 @@ class SwarmControl : public rclcpp::Node
                 avg_z /= count;
 
                 // Update the message with the average values
-                // message.x = avg_x;
-                // message.y = avg_y;
-                // message.z = avg_z;
+                message.x = avg_x;
+                message.y = avg_y;
+                message.z = avg_z;
                 
                 cf->pub->publish(message);
                 cf->updateCmdBuffer(message.x, message.y, message.z, 0);
@@ -429,19 +416,9 @@ class SwarmControl : public rclcpp::Node
         {
             if (mode != 0)
             {
-                geometry_msgs::msg::TransformStamped t;
-                t.header.stamp = this->get_clock()->now();
-                t.header.frame_id = "hand_stat";
-                t.child_frame_id = "swarm";
-                t.transform.translation.x = swarm.x;
-                t.transform.translation.y = swarm.y;
-                t.transform.translation.z = swarm.z;
-                // Should maybe add change of rotation as well, but not nessecary
-                t.transform.rotation.x = 0.0;
-                t.transform.rotation.y = 0.0;
-                t.transform.rotation.z = 0.0;
-                t.transform.rotation.w = 1.0;
-                tf_static_broadcaster_->sendTransform(t);
+                geometry_msgs::msg::TransformStamped transformStamped = 
+                tf_buffer_->lookupTransform("hand_stat", "swarm", this->get_clock()->now(), rclcpp::Duration::from_seconds(1.0));
+                tf_static_broadcaster_->sendTransform(transformStamped);
             }
             mode = 0;
         }
@@ -449,19 +426,9 @@ class SwarmControl : public rclcpp::Node
         {
             if (mode != 2)
             {
-                geometry_msgs::msg::TransformStamped t;
-                t.header.stamp = this->get_clock()->now();
-                t.header.frame_id = "hand_stat";
-                t.child_frame_id = "swarm";
-                t.transform.translation.x = swarm.x;
-                t.transform.translation.y = swarm.y;
-                t.transform.translation.z = swarm.z;
-                // Should maybe add change of rotation as well, but not nessecary
-                t.transform.rotation.x = 0.0;
-                t.transform.rotation.y = 0.0;
-                t.transform.rotation.z = 0.0;
-                t.transform.rotation.w = 1.0;
-                tf_static_broadcaster_->sendTransform(t);
+                geometry_msgs::msg::TransformStamped transformStamped = 
+                tf_buffer_->lookupTransform("hand_stat", "swarm", this->get_clock()->now(), rclcpp::Duration::from_seconds(1.0));
+                tf_static_broadcaster_->sendTransform(transformStamped);
             }
             mode = 2;
         }
@@ -470,40 +437,15 @@ class SwarmControl : public rclcpp::Node
             if (mode != 1)
             {
                 //Add the translation. The displacement of the right hand since the "hold" was initiated.
-                swarm.x += (hand_stat.x-hand_r.x);
-                swarm.y += (hand_stat.y-hand_r.y);
-                swarm.z += (hand_stat.z-hand_r.z);
-                geometry_msgs::msg::TransformStamped t;
-                t.header.stamp = this->get_clock()->now();
-                t.header.frame_id = "hand_r";
-                t.child_frame_id = "swarm";
-                t.transform.translation.x = swarm.x;
-                t.transform.translation.y = swarm.y;
-                t.transform.translation.z = swarm.z;
-                // Should maybe add change of rotation as well, but not nessecary
-                t.transform.rotation.x = 0.0;
-                t.transform.rotation.y = 0.0;
-                t.transform.rotation.z = 0.0;
-                t.transform.rotation.w = 1.0;
-                tf_static_broadcaster_->sendTransform(t);
+                geometry_msgs::msg::TransformStamped transformStamped = 
+                tf_buffer_->lookupTransform("hand_r", "swarm", this->get_clock()->now(), rclcpp::Duration::from_seconds(1.0));
+                tf_static_broadcaster_->sendTransform(transformStamped);
             }
             // Update the static hand pose.
-            hand_stat.x = hand_r.x;
-            hand_stat.y = hand_r.y;
-            hand_stat.z = hand_r.z;
-            hand_stat.q = tf2::Quaternion(hand_r.q[0], hand_r.q[1], hand_r.q[2], hand_r.q[3]);
-            geometry_msgs::msg::TransformStamped t;
-            t.header.stamp = this->get_clock()->now();
-            t.header.frame_id = "world";
-            t.child_frame_id = "hand_stat";
-            t.transform.translation.x = hand_stat.x;
-            t.transform.translation.y = hand_stat.y;
-            t.transform.translation.z = hand_stat.z;
-            t.transform.rotation.x = hand_stat.q[0];
-            t.transform.rotation.y = hand_stat.q[1];
-            t.transform.rotation.z = hand_stat.q[2];
-            t.transform.rotation.w = hand_stat.q[3];
-            tf_static_broadcaster_->sendTransform(t);
+            geometry_msgs::msg::TransformStamped transformStamped = 
+                tf_buffer_->lookupTransform("world", "hand_r", this->get_clock()->now(), rclcpp::Duration::from_seconds(1.0));
+            transformStamped.child_frame_id = "hand_stat";
+            tf_static_broadcaster_->sendTransform(transformStamped);
             mode = 1;
         }
         // std::cout << "Mode: " << mode << std::endl;
@@ -568,6 +510,7 @@ class SwarmControl : public rclcpp::Node
     {
         // This method should probably be removed in the future, as all relevant information
         // can already be accessed through tf2
+        // I think it can be removed now actually. No, hand_l is stll used.
         Vector3f target; 
         Vector3f cf2_v;
         auto message = crazyflie_interfaces::msg::Position();
