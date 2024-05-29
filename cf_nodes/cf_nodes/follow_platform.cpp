@@ -71,14 +71,14 @@ class PlatformFollower : public rclcpp::Node
       for (unsigned int i=0; i<msg.poses.size(); i++){
         if (msg.poses[i].name == "platform"){
           p_v[0] = msg.poses[i].pose.position.x;
-	  p_v[1] = msg.poses[i].pose.position.y;
-	  p_v[2] = msg.poses[i].pose.position.z + 1.0; 
-	}
-	else if (msg.poses[i].name == "cf2"){
-	  cf2_v[0] = msg.poses[i].pose.position.x;
-	  cf2_v[1] = msg.poses[i].pose.position.y;
-	  cf2_v[2] = msg.poses[i].pose.position.z;
-	}
+          p_v[1] = msg.poses[i].pose.position.y;
+          p_v[2] = msg.poses[i].pose.position.z + 1.0; 
+        }
+        else if (msg.poses[i].name == "cf2"){
+          cf2_v[0] = msg.poses[i].pose.position.x;
+          cf2_v[1] = msg.poses[i].pose.position.y;
+          cf2_v[2] = msg.poses[i].pose.position.z;
+        }
       }
       Vector3f d = p_v-cf2_v;
       float dist = d.norm();

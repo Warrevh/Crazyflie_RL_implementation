@@ -13,6 +13,8 @@ find_package(Eigen3 REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(SDL2 REQUIRED)
+find_package(PkgConfig)
+pkg_check_modules(YAMLCPP REQUIRED yaml-cpp>=0.5)
 
 include_directories(/usr/include/eigen3)
 include_directories(
@@ -41,6 +43,19 @@ motion_capture_tracking_interfaces
 crazyflie_interfaces
 Eigen3
 )
+add_executable(swarm_control
+  cf_nodes/swarm_control.cpp
+)
+ament_target_dependencies(swarm_control
+rclcpp
+geometry_msgs
+motion_capture_tracking_interfaces
+crazyflie_interfaces
+Eigen3
+tf2
+tf2_ros
+)
+target_link_libraries(swarm_control ${YAMLCPP_LIBRARIES})
 
 add_executable(safety
   cf_nodes/safety.cpp
@@ -82,6 +97,9 @@ install(TARGETS
   DESTINATION lib/${PROJECT_NAME}) 
 install(TARGETS 
   teleop_fr 
+  DESTINATION lib/${PROJECT_NAME}) 
+install(TARGETS 
+  swarm_control 
   DESTINATION lib/${PROJECT_NAME}) 
  
 ament_export_dependencies( 
