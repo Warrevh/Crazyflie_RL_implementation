@@ -145,9 +145,9 @@ class SwarmControl : public rclcpp::Node
         hand_stat.y = 0.0;
         hand_stat.z = 0.0;
         hand_stat.q = tf2::Quaternion(0, 0, 0, 1);
-        swarm.x = 1.0;
+        swarm.x = 1.5;
         swarm.y = 0.0;
-        swarm.z = 0.5;
+        swarm.z = 1.0;
         // Create static transform for swarm and hand_static
         geometry_msgs::msg::TransformStamped t;
         tf_static_broadcaster_ = std::make_shared<tf2_ros::StaticTransformBroadcaster>(this);
@@ -169,9 +169,9 @@ class SwarmControl : public rclcpp::Node
         t.transform.translation.z = swarm.z;
         tf_static_broadcaster_->sendTransform(t);
 
-        float offset_x[6] = { 0.5, -0.5, -0.5,  0  , 0  , -0.5};
-        float offset_y[6] = { 0  , -1  ,  1  , -0.5, 0.5,  0  };
-        float offset_z[6] = {0,0,0,0,0,0};
+        float offset_x[19] = { 0.5, -0.5, -0.5,  0   , 0   , -0.5, 1, -1, -1,  0.5, 0.5,  0   , 0   , -0.5, -0.5, -1   , -1   , -1   , -1   };
+        float offset_y[19] = { 0  , -0.5,  0.5, -0.25, 0.25,  0  , 0, -1,  1, -0.5, 0.5, -0.75, 0.75, -1  ,  1  , -0.75,  0.75, -0.25,  0.25};
+        float offset_z[19] = { 0  ,  0  ,  0  ,  0   , 0   ,  0  , 0,  0,  0,  0  , 0  ,  0   , 0   ,  0  ,  0  ,  0   ,  0   ,  0   ,  0   };
         const char* config_path = "/root/ros2_ws/src/crazyswarm2/crazyflie/config/crazyflies.yaml";
         read_config(config_path);
         rclcpp::QoS qos = rclcpp::QoS(rclcpp::KeepLast(1));
@@ -190,10 +190,10 @@ class SwarmControl : public rclcpp::Node
         geometry_msgs::msg::Point goal;
         goal.x = 0.0;
         goal.y = 0.0;
-        goal.z = 0.5;
+        goal.z = 1.0;
         goto_request->goal = goal;
         goto_request->yaw = 0.0;
-        goto_request->duration = rclcpp::Duration::from_seconds(2.0);
+        goto_request->duration = rclcpp::Duration::from_seconds(3.0);
         goto_request->relative = false;
         // goto_request->group_mask = 0;
         geometry_msgs::msg::TransformStamped transformStamped;
@@ -224,23 +224,29 @@ class SwarmControl : public rclcpp::Node
             t.transform.translation.y = offset_y[i];
             t.transform.translation.z = offset_z[i];
             tf_static_broadcaster_->sendTransform(t);
-            rclcpp::sleep_for(2000ms); // Sleep to make sure the transform is published before the cf starts to takeoff
             cf->pub = this->create_publisher<crazyflie_interfaces::msg::Position>(cmd_topic,qos); 
             cf->takeoff_cli = this->create_client<crazyflie_interfaces::srv::Takeoff>(takeoff_service);
             cf->goto_cli = this->create_client<crazyflie_interfaces::srv::GoTo>(goto_service);
             cf->tf_static_broadcaster = tf_static_broadcaster_;
             cfs.push_back(cf);
             cfs_map[names[i]] = cf;
+            rclcpp::sleep_for(2000ms); // Sleep to make sure the transform is published before the cf starts to takeoff
             transformStamped = 
                 tf_buffer_->lookupTransform("world", names[i]+"_ref", this->get_clock()->now(), rclcpp::Duration::from_seconds(1.0));
             cf->takeoff_cli->async_send_request(request);
+        }
+        rclcpp::sleep_for(2500ms);
+        for (size_t i = 0; i < names.size(); i++)
+        {   
+            transformStamped = 
+                tf_buffer_->lookupTransform("world", names[i]+"_ref", this->get_clock()->now(), rclcpp::Duration::from_seconds(1.0));
             goto_request->goal.x = transformStamped.transform.translation.x;
             goto_request->goal.y = transformStamped.transform.translation.y;
             goto_request->goal.z = transformStamped.transform.translation.z;
-            cf->goto_cli->async_send_request(goto_request);
+            cfs[i]->goto_cli->async_send_request(goto_request);
         }
+        rclcpp::sleep_for(3500ms);
         std::cout << "All crazyflies are initialized" << std::endl;
-        rclcpp::sleep_for(5000ms);
         timer_ = this->create_wall_timer(
         10ms, std::bind(&SwarmControl::swarm_callback, this));
         timer_slow_ = this->create_wall_timer(
@@ -412,7 +418,7 @@ class SwarmControl : public rclcpp::Node
         float y; float x; // z-components of the y and x unit vectors of the local coordinate system
         x = 2*(hand_l.q[0]*hand_l.q[2] - hand_l.q[3]*hand_l.q[1]);
         y = 2*(hand_l.q[1]*hand_l.q[2] + hand_l.q[3]*hand_l.q[0]);
-        if(x > 0.7)
+        if(x < -0.7)
         {
             if (mode != 0)
             {
