@@ -147,7 +147,7 @@ class SwarmControl : public rclcpp::Node
         hand_stat.q = tf2::Quaternion(0, 0, 0, 1);
         swarm.x = 1.5;
         swarm.y = 0.0;
-        swarm.z = 1.0;
+        swarm.z = -0.3;
         // Create static transform for swarm and hand_static
         geometry_msgs::msg::TransformStamped t;
         tf_static_broadcaster_ = std::make_shared<tf2_ros::StaticTransformBroadcaster>(this);
@@ -230,22 +230,22 @@ class SwarmControl : public rclcpp::Node
             cf->tf_static_broadcaster = tf_static_broadcaster_;
             cfs.push_back(cf);
             cfs_map[names[i]] = cf;
-            rclcpp::sleep_for(2000ms); // Sleep to make sure the transform is published before the cf starts to takeoff
+            rclcpp::sleep_for(1000ms); // Sleep to make sure the transform is published before the cf starts to takeoff
             transformStamped = 
                 tf_buffer_->lookupTransform("world", names[i]+"_ref", this->get_clock()->now(), rclcpp::Duration::from_seconds(1.0));
-            cf->takeoff_cli->async_send_request(request);
+            // cf->takeoff_cli->async_send_request(request);
         }
         rclcpp::sleep_for(2500ms);
-        for (size_t i = 0; i < names.size(); i++)
-        {   
-            transformStamped = 
-                tf_buffer_->lookupTransform("world", names[i]+"_ref", this->get_clock()->now(), rclcpp::Duration::from_seconds(1.0));
-            goto_request->goal.x = transformStamped.transform.translation.x;
-            goto_request->goal.y = transformStamped.transform.translation.y;
-            goto_request->goal.z = transformStamped.transform.translation.z;
-            cfs[i]->goto_cli->async_send_request(goto_request);
-        }
-        rclcpp::sleep_for(3500ms);
+        // for (size_t i = 0; i < names.size(); i++)
+        // {   
+        //     transformStamped = 
+        //         tf_buffer_->lookupTransform("world", names[i]+"_ref", this->get_clock()->now(), rclcpp::Duration::from_seconds(1.0));
+        //     goto_request->goal.x = transformStamped.transform.translation.x;
+        //     goto_request->goal.y = transformStamped.transform.translation.y;
+        //     goto_request->goal.z = transformStamped.transform.translation.z;
+        //     cfs[i]->goto_cli->async_send_request(goto_request);
+        // }
+        // rclcpp::sleep_for(3500ms);
         std::cout << "All crazyflies are initialized" << std::endl;
         timer_ = this->create_wall_timer(
         10ms, std::bind(&SwarmControl::swarm_callback, this));
