@@ -45,12 +45,10 @@ public:
     std::string name;
     //  Cf pose relative to swarm origin
     float x_r, y_r, z_r;
+    // Factor that decides how the relative pose chages if the swarm is expanded or minimized.
     float x_r_base, y_r_base, z_r_base;
 
     rclcpp::Publisher<crazyflie_interfaces::msg::Position>::SharedPtr pub;
-    rclcpp::Client<crazyflie_interfaces::srv::Takeoff>::SharedPtr takeoff_cli;
-    rclcpp::Client<crazyflie_interfaces::srv::GoTo>::SharedPtr goto_cli;
-    // Function to change cf's pose in the formation
     std::shared_ptr<tf2_ros::StaticTransformBroadcaster> tf_static_broadcaster;
 private:
     std::queue<crazyflie_interfaces::msg::Position> cmd_buffer;
@@ -62,10 +60,7 @@ public:
             cmd_buffer.pop();
         }
         crazyflie_interfaces::msg::Position msg;
-        msg.x = x;
-        msg.y = y;
-        msg.z = z;
-        msg.yaw = yaw;
+        msg.x = x; msg.y = y; msg.z = z; msg.yaw = yaw;
         cmd_buffer.push(msg);
     }
     std::vector<crazyflie_interfaces::msg::Position> getCmdBuffer()
@@ -105,50 +100,28 @@ public:
 
 };
 
-struct Pose
-{
-    float x;
-    float y;
-    float z;
-    tf2::Quaternion q;
-};
-
-
 class SwarmControl : public rclcpp::Node
 {
   public:
     std::vector<std::string> names;
     std::vector<CF*> cfs;
-    std::unordered_map<std::string,CF*> cfs_map;
-    Pose hand_r;
-    Pose hand_l;
-    Pose hand_stat; // Used to store the most recent pose of the right hand when in mode 1
     // Mode is changed with the angle of the left hand
-    int mode; // 0: "Hold" the swarm does not react to the right hand
+    int mode; // 0: "Hold" the swarm does not react to the right hand. (NOT CURRENTLY USED)
               // 1: "Follow" the pose of the swarm changes with the pose of the right hand
               // 2: "Formation" the formation of the swarm changes with the movements of the right hand
     // Swarm origin relative to the right hand
-    Pose swarm;
-
     SwarmControl()
     : Node("swarm_control")
     {
         tf_buffer_ = std::make_unique<tf2_ros::Buffer>(this->get_clock());
         tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
         mode = 1;
-        hand_r.x = 0.0;
-        hand_r.y = 0.0;
-        hand_r.z = 0.0;
-        hand_r.q = tf2::Quaternion(0, 0, 0, 1);
-        hand_stat.x = 0.0;
         tf_static_broadcaster_ = std::make_shared<tf2_ros::StaticTransformBroadcaster>(this);
-        hand_stat.y = 0.0;
-        hand_stat.z = 0.0;
-        hand_stat.q = tf2::Quaternion(0, 0, 0, 1);
-        swarm.x = 1.5;
-        swarm.y = 0.0;
-        swarm.z = 1.0;
+        float swarm_x = 1.5;
+        float swarm_y = 0.0;
+        float swarm_z = -0.3;
         // Create static transform for swarm and hand_static
+        // Hand static is a frame that is used as the base for the swarm frame, when in mode 2
         geometry_msgs::msg::TransformStamped t;
         tf_static_broadcaster_ = std::make_shared<tf2_ros::StaticTransformBroadcaster>(this);
         t.header.stamp = this->get_clock()->now();
@@ -164,11 +137,13 @@ class SwarmControl : public rclcpp::Node
         tf_static_broadcaster_->sendTransform(t);
         t.header.frame_id = "hand_r";
         t.child_frame_id = "swarm";
-        t.transform.translation.x = swarm.x;
-        t.transform.translation.y = swarm.y;
-        t.transform.translation.z = swarm.z;
+        t.transform.translation.x = swarm_x;
+        t.transform.translation.y = swarm_y;
+        t.transform.translation.z = swarm_z;
         tf_static_broadcaster_->sendTransform(t);
 
+        // The offset of the crazyflies relative to the swarm origin.
+        // The node currently supports up to 20 crazyflies.
         float offset_x[19] = { 0.5, -0.5, -0.5,  0   , 0   , -0.5, 1, -1, -1,  0.5, 0.5,  0   , 0   , -0.5, -0.5, -1   , -1   , -1   , -1   };
         float offset_y[19] = { 0  , -0.5,  0.5, -0.25, 0.25,  0  , 0, -1,  1, -0.5, 0.5, -0.75, 0.75, -1  ,  1  , -0.75,  0.75, -0.25,  0.25};
         float offset_z[19] = { 0  ,  0  ,  0  ,  0   , 0   ,  0  , 0,  0,  0,  0  , 0  ,  0   , 0   ,  0  ,  0  ,  0   ,  0   ,  0   ,  0   };
@@ -182,20 +157,6 @@ class SwarmControl : public rclcpp::Node
         std::cout << names.size() << " active crazyflies: " << std::endl;
         CF* cf;
         std::string cmd_topic;
-        std::string takeoff_service, goto_service;
-        auto request = std::make_shared<crazyflie_interfaces::srv::Takeoff::Request>();
-        request->height = 0.5;
-        request->duration = rclcpp::Duration::from_seconds(2.0);
-        auto goto_request = std::make_shared<crazyflie_interfaces::srv::GoTo::Request>();
-        geometry_msgs::msg::Point goal;
-        goal.x = 0.0;
-        goal.y = 0.0;
-        goal.z = 1.0;
-        goto_request->goal = goal;
-        goto_request->yaw = 0.0;
-        goto_request->duration = rclcpp::Duration::from_seconds(3.0);
-        goto_request->relative = false;
-        // goto_request->group_mask = 0;
         geometry_msgs::msg::TransformStamped transformStamped;
         for (size_t i = 0; i < names.size(); i++)
         {   
@@ -210,14 +171,9 @@ class SwarmControl : public rclcpp::Node
             cf->x_r_base = offset_x[i]; cf->y_r_base = offset_y[i]; cf->z_r_base = offset_z[i];
             cf->yaw = 0;
             cmd_topic = "/cf/cmd_position";
-            takeoff_service = "/cf/takeoff";
-            goto_service = "/cf/go_to";
             for (size_t j = 0; j < names[i].size()-2; j++) //Run the loop once if cfx, twice if cfxx and so on
-            {
                 cmd_topic.insert(3+j,1,names[i][2+j]);
-                takeoff_service.insert(3+j,1,names[i][2+j]);
-                goto_service.insert(3+j,1,names[i][2+j]);
-            }
+            // This is the reference frame for the crazyflies. In other words, the wanted position of the crazyflies in the swarm frame.
             t.header.frame_id = "swarm";
             t.child_frame_id = (names[i]+"_ref");
             t.transform.translation.x = offset_x[i];
@@ -225,39 +181,19 @@ class SwarmControl : public rclcpp::Node
             t.transform.translation.z = offset_z[i];
             tf_static_broadcaster_->sendTransform(t);
             cf->pub = this->create_publisher<crazyflie_interfaces::msg::Position>(cmd_topic,qos); 
-            cf->takeoff_cli = this->create_client<crazyflie_interfaces::srv::Takeoff>(takeoff_service);
-            cf->goto_cli = this->create_client<crazyflie_interfaces::srv::GoTo>(goto_service);
             cf->tf_static_broadcaster = tf_static_broadcaster_;
             cfs.push_back(cf);
-            cfs_map[names[i]] = cf;
-            rclcpp::sleep_for(2000ms); // Sleep to make sure the transform is published before the cf starts to takeoff
-            transformStamped = 
-                tf_buffer_->lookupTransform("world", names[i]+"_ref", this->get_clock()->now(), rclcpp::Duration::from_seconds(1.0));
-            cf->takeoff_cli->async_send_request(request);
         }
         rclcpp::sleep_for(2500ms);
-        for (size_t i = 0; i < names.size(); i++)
-        {   
-            transformStamped = 
-                tf_buffer_->lookupTransform("world", names[i]+"_ref", this->get_clock()->now(), rclcpp::Duration::from_seconds(1.0));
-            goto_request->goal.x = transformStamped.transform.translation.x;
-            goto_request->goal.y = transformStamped.transform.translation.y;
-            goto_request->goal.z = transformStamped.transform.translation.z;
-            cfs[i]->goto_cli->async_send_request(goto_request);
-        }
-        rclcpp::sleep_for(3500ms);
         std::cout << "All crazyflies are initialized" << std::endl;
         timer_ = this->create_wall_timer(
         10ms, std::bind(&SwarmControl::swarm_callback, this));
         timer_slow_ = this->create_wall_timer(
         100ms, std::bind(&SwarmControl::mode_callback, this));
-        subscription_ = this->create_subscription<motion_capture_tracking_interfaces::msg::NamedPoseArray>(
-        "/poses", qos, std::bind(&SwarmControl::qtm_callback, this, _1));
     }
 
   private:
     rclcpp::Subscription<motion_capture_tracking_interfaces::msg::NamedPoseArray>::SharedPtr subscription_;
-    rclcpp::Client<crazyflie_interfaces::srv::Takeoff>::SharedPtr client_takeoff;
     rclcpp::TimerBase::SharedPtr timer_;
     rclcpp::TimerBase::SharedPtr timer_slow_;
     std::shared_ptr<tf2_ros::StaticTransformBroadcaster> tf_static_broadcaster_;
@@ -279,9 +215,7 @@ class SwarmControl : public rclcpp::Node
             {
                 attributes = it->second;
                 if(attributes["enabled"].as<bool>())
-                {
                     names.push_back(robot_name);
-                }
             }
         }
     }
@@ -290,9 +224,7 @@ class SwarmControl : public rclcpp::Node
     {
         CF* cf;
         tf2::Quaternion cfq;
-        float x;
-        float y;
-        float z;
+        float x,y,z;
         geometry_msgs::msg::PoseStamped cf_pose_swarm;
         cf_pose_swarm.header.frame_id = "swarm";
         geometry_msgs::msg::PoseStamped cf_pose_world;
@@ -356,7 +288,6 @@ class SwarmControl : public rclcpp::Node
                 cf = cfs[i];
                 // Get the world coordinates from hand_r and hand_stat
                 geometry_msgs::msg::TransformStamped hand_r_transformStamped = tf_buffer_->lookupTransform("hand_stat", "hand_r", this->get_clock()->now(), rclcpp::Duration::from_seconds(1.0));
-
                 float hand_r_x = -hand_r_transformStamped.transform.translation.x;
                 float hand_r_y = -hand_r_transformStamped.transform.translation.y;
                 float hand_r_z = -hand_r_transformStamped.transform.translation.z;
@@ -416,8 +347,10 @@ class SwarmControl : public rclcpp::Node
     void mode_callback()
     {
         float y; float x; // z-components of the y and x unit vectors of the local coordinate system
-        x = 2*(hand_l.q[0]*hand_l.q[2] - hand_l.q[3]*hand_l.q[1]);
-        y = 2*(hand_l.q[1]*hand_l.q[2] + hand_l.q[3]*hand_l.q[0]);
+        geometry_msgs::msg::TransformStamped transformStamped = 
+                tf_buffer_->lookupTransform("world", "hand_l", this->get_clock()->now(), rclcpp::Duration::from_seconds(1.0));
+        x = 2*(transformStamped.transform.rotation.x*transformStamped.transform.rotation.z - transformStamped.transform.rotation.w*transformStamped.transform.rotation.y);
+        y = 2*(transformStamped.transform.rotation.y*transformStamped.transform.rotation.z + transformStamped.transform.rotation.w*transformStamped.transform.rotation.x);
         if(x < -0.7)
         {
             if (mode != 0)
@@ -453,92 +386,6 @@ class SwarmControl : public rclcpp::Node
             transformStamped.child_frame_id = "hand_stat";
             tf_static_broadcaster_->sendTransform(transformStamped);
             mode = 1;
-        }
-        // std::cout << "Mode: " << mode << std::endl;
-        // std::cout << "Hand right: " << hand_r.x << "," << hand_r.y << "," << hand_r.z << std::endl;
-        // std::cout << "Hand static: " << hand_stat.x << "," << hand_stat.y << "," << hand_stat.z << std::endl;
-        // std::cout << "Swarm: " << swarm.x << "," << swarm.y << "," << swarm.z << std::endl;
-    }
-
-    // void mode_callback()
-    // {
-    //     if (choosing)
-    //     {
-    //         //Check "direction" of left hand
-    //         if(hand_r.x-hand_l.x > 0.6)
-    //         {
-    //             mode = 1;
-    //             hand_stat.x = hand_r.x;
-    //             hand_stat.y = hand_r.y;
-    //             hand_stat.z = hand_r.z;
-    //             hand_stat.q = hand_r.q;
-    //             choosing = false;
-    //         }
-    //         else if(hand_r.y-hand_l.y > 0.6)
-    //         {
-    //             mode = 2;
-    //             hand_stat.x = hand_r.x;
-    //             hand_stat.y = hand_r.y;
-    //             hand_stat.z = hand_r.z;
-    //             hand_stat.q = hand_r.q;
-    //             choosing = false;
-    //         }
-    //         else if(hand_r.z-hand_l.z > 0.6)
-    //         {
-    //             mode = 3;
-    //             hand_stat.x = hand_r.x;
-    //             hand_stat.y = hand_r.y;
-    //             hand_stat.z = hand_r.z;
-    //             hand_stat.q = hand_r.q;
-    //             choosing = false;
-    //         }
-    //         else if(hand_r.z-hand_l.z < -0.6)
-    //         {
-    //             mode = 0;
-    //             choosing = false;
-    //         }
-    //     }
-    //     else
-    //     {
-    //         //Check distance between hands
-    //         Vector3f r; r[0]=hand_r.x; r[1]=hand_r.y; r[2]=hand_r.z;
-    //         Vector3f l; l[0]=hand_l.x; l[1]=hand_l.y; l[2]=hand_l.z;
-    //         Vector3f d = r-l;
-    //         float dist = d.norm();
-    //         if(dist<0.1)
-    //         {
-    //             choosing = true;
-    //         }
-    //     }
-    // }
-
-    void qtm_callback(const motion_capture_tracking_interfaces::msg::NamedPoseArray & msg)
-    {
-        // This method should probably be removed in the future, as all relevant information
-        // can already be accessed through tf2
-        // I think it can be removed now actually. No, hand_l is stll used.
-        Vector3f target; 
-        Vector3f cf2_v;
-        auto message = crazyflie_interfaces::msg::Position();
-        for (unsigned int i=0; i<msg.poses.size(); i++){
-            if (msg.poses[i].name == "hand_r"){
-                hand_r.x = msg.poses[i].pose.position.x;
-                hand_r.y = msg.poses[i].pose.position.y;
-                hand_r.z = msg.poses[i].pose.position.z;
-                hand_r.q = tf2::Quaternion(msg.poses[i].pose.orientation.x,msg.poses[i].pose.orientation.y,msg.poses[i].pose.orientation.z,msg.poses[i].pose.orientation.w);
-            }
-            else if (msg.poses[i].name == "hand_l"){
-                hand_l.x = msg.poses[i].pose.position.x;
-                hand_l.y = msg.poses[i].pose.position.y;
-                hand_l.z = msg.poses[i].pose.position.z;
-                hand_l.q = tf2::Quaternion(msg.poses[i].pose.orientation.x,msg.poses[i].pose.orientation.y,msg.poses[i].pose.orientation.z,msg.poses[i].pose.orientation.w);
-            }
-            else if (msg.poses[i].name[0]=='c' && msg.poses[i].name[1]=='f'){
-                cfs_map[msg.poses[i].name]->x = msg.poses[i].pose.position.x;
-                cfs_map[msg.poses[i].name]->y = msg.poses[i].pose.position.y;
-                cfs_map[msg.poses[i].name]->z = msg.poses[i].pose.position.z;
-                // std::cout << msg.poses[i].name << ": " << cfs_map[msg.poses[i].name]->x << "," << cfs_map[msg.poses[i].name]->y << "," << cfs_map[msg.poses[i].name]->z << std::endl;
-            }
         }
     }
 };

@@ -77,6 +77,27 @@ If everything looks good you can run the test script "hello_world.py" by writing
 
 When writing your own scripts, they can preferably be put in the ros2_ws/src/cf_nodes directory. Take inspiration from what is written in the CMakeLists.txt file and you will figure out what to add to make an executable for your own node. Appart from the python scripts provided by bitcraze, there are also two nodes written in c++ in the cf_nodes package, to give you an idea of how these can look.
 
+### Swarm demo walkthrough
+
+#### Preparations
+- Connect to Visionen WI-FI
+- Start the container and build the project
+- Disable/enable CFs in qtm according to the swarm setup and edit crazyflies.yaml accordingly.
+- Equip the CFs with fully charged batteries.
+- Place the CFs on the floor in the pattern according to the initial swarm formation.
+- Open two terminals, one for the cf-server and one for the swarm.
+- Start floor projection.
+
+#### Start
+- Turn off lidars and other IR sources in the room.
+- Turn on the CFs.
+- Start the crazyflie server and verify that the tfs look normal.
+- Start the swarm.
+- Slowly lift the "controllers" until the drones start to move. Wait for them to stabalize in their start position, and then lifting the "controllers" compleately, alowing them to take off.
+- Right hand controls position. To control the swarm size, roll left hand 90 deg (to the right) and move right hand in xy-plane.
+- To land. Initiate swarm size control, move right hand in z-direction so that it is higher than the highest CF. Reset left hand and lower right hand to the floor.
+- Turn of swarm and server.
+
 ## Resources
 
 If you are new to ROS, it is recomended to go through some of the tutorials [here](http://docs.ros.org/en/humble/Tutorials.html)
