@@ -56,12 +56,8 @@ def main():
 
     """
 
-
-
-
 if __name__ == "__main__":
     main()
-
 
 class RlModel():
     def __init__(self,model_path):
@@ -79,7 +75,6 @@ class RlModel():
         target_pos = pos[0:3]+0.1*np.array([action[0],action[1],0])
         return target_pos
 
-   
 class DronePosition(Node):
     def __init__(self,drone_id,final_target):
         super().__init__('drone_position_node')
