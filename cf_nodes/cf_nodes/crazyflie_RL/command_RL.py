@@ -5,6 +5,9 @@ import time
 import numpy as np
 from pathlib import Path
 from crazyflie_py import Crazyswarm
+import csv
+import os
+import datetime
 
 from stable_baselines3 import SAC
 
@@ -89,7 +92,7 @@ class DronePosition(Node):
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
         
-        self.timer = self.create_timer(1/120 , self.run_drone)
+        self.timer = self.create_timer(1/240 , self.run_drone)
         self.prev_time = None
 
         self.prev_pos = None
@@ -100,6 +103,7 @@ class DronePosition(Node):
         self.ang_v = np.zeros((1,3))
         
         self.obs = None
+        self.log_obs = Logger_obs()
 
         self.min_pos = np.array([0,0,0])
         self.max_pos = np.array([5,4,1]) # if the drone goes outside of these boundrys it stops
@@ -114,13 +118,16 @@ class DronePosition(Node):
     def run_drone(self):
         try:
             self.obs = self.get_obs()
+            self.log_obs.log_obs(self.obs)
             transform = self.tf_buffer.lookup_transform('world', 'local_frame', rclpy.time.Time())
             self.alive = self.alive_check()
 
             if self.alive:
-                if np.linalg.norm(self.final_target[0:2]-self.pos[0,0:2]) < 0.5:
+                if np.linalg.norm(self.final_target[0:2]-self.pos[0,0:2]) < 0.2:
                     self.command = 'land'
                     self.sendCommand()
+                    self.log_obs.save_obs()
+                    self.destroy_timer(self.timer)
                     
                 else:
                     action = self.model.get_action(self.obs)
@@ -184,6 +191,8 @@ class DronePosition(Node):
         if not alive:
             self.command = 'emergency'
             self.sendCommand()
+            self.log_obs.save_obs()
+            self.destroy_timer(self.timer)
 
         return alive
     
@@ -215,3 +224,37 @@ class DronePosition(Node):
 
         return world_homogeneous
 
+class Logger_obs():
+    def __init__(self):
+
+        current_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+        self.output_folder= Path(__file__).parent / 'results'
+        self.file_name = str(self.output_folder / f"obs_log_{current_time}.txt")
+
+        self.all_obs = []
+
+        print('logpath created')
+
+    def log_obs(self,obs):
+        flattened_obs = [
+            obs["Position"][0][0], obs["Position"][0][1], obs["Position"][0][2],  # Position (x, y, z)
+            obs["Velocity"][0][0], obs["Velocity"][0][1], obs["Velocity"][0][2],  # Velocity (x, y, z)
+            obs["rpy"][0][0], obs["rpy"][0][1], obs["rpy"][0][2],                # Roll, Pitch, Yaw
+            obs["ang_v"][0][0], obs["ang_v"][0][1], obs["ang_v"][0][2]          # Angular velocity (x, y, z)
+        ]
+        self.all_obs.append(flattened_obs)  # Append the observation to the log
+
+    def save_obs(self):
+        headers = [
+            "Position_x", "Position_y", "Position_z",
+            "Velocity_x", "Velocity_y", "Velocity_z",
+            "Roll", "Pitch", "Yaw",
+            "AngularVelocity_x", "AngularVelocity_y", "AngularVelocity_z"
+        ]
+        
+        # Write the collected data to a CSV file
+        with open(self.file_name, mode="w", newline="") as file:
+            writer = csv.writer(file)
+            writer.writerow(headers)  # Write the header row
+            writer.writerows(self.all_obs)  # Write all the collected data
+            print("observation written to file "+ self.file_name)

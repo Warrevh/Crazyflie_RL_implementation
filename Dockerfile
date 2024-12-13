@@ -41,3 +41,5 @@ RUN chmod +x ~/colcon_build.sh
 RUN echo "source ~/ros2_ws/install/setup.bash" >> ~/.bashrc
 #RUN pip3 install cfclient
 RUN apt-get remove python3-matplotlib -y
+RUN apt-get install -y tzdata
+ENV TZ=Europe/Stockholm
