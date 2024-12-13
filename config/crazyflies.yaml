@@ -1,8 +1,8 @@
 # named list of all robots
 robots:
-  cf1:
+  cf20:
     enabled: true
-    uri: radio://0/100/2M/E7E7E7E701
+    uri: radio://0/80/2M/E7E7E7E720
     initial_position: [0, 0, 0]
     type: cf  # see robot_types
     # firmware_params:
