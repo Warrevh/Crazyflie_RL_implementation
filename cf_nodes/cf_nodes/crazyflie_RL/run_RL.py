@@ -3,6 +3,8 @@ from rclpy.node import Node
 from crazyflie_py import Crazyswarm
 from std_msgs.msg import String
 
+import numpy as np
+
 class CrazyflieNode(Node):
     def __init__(self,cf,timeHelper):
         super().__init__('crazyflie_node')
@@ -13,8 +15,10 @@ class CrazyflieNode(Node):
         self.state = 'idle'  # Possible states: 'idle', 'takeoff', 'hover', 'land', 'goTo'
 
         self.z = 0.2
+        self.yaw_offset = -np.pi/2
+        self.first_loop = True
 
-        self.cf.takeoff(targetHeight=self.z, duration=2.0)
+        self.cf.takeoff(targetHeight=self.z, duration=2.0,)
         self.timeHelper.sleep(2.0)
         self.get_logger().info("Takeoff complete.")
         
@@ -76,25 +80,34 @@ class CrazyflieNode(Node):
 
         elif self.state == 'hover':
             x, y = self.target_position
-            self.cf.goTo([x, y, self.z], yaw=0.0, duration=2.0)
+            self.cf.goTo([x, y, self.z], yaw=self.yaw_offset, duration=2.0)
             self.timeHelper.sleep(2.0)
             self.get_logger().info(f"Hovering at position: {self.target_position}")
 
         elif self.state == 'goto':
             x, y = self.target_position
-            self.cf.goTo([x, y, self.z], yaw=0.0, duration=0.7)
-            self.timeHelper.sleep(1/120)
+            if self.first_loop:
+                self.cf.goTo([x, y, self.z], yaw=self.yaw_offset, duration=2)
+                self.timeHelper.sleep(2)
+            else:
+                self.cf.goTo([x, y, self.z], yaw=self.yaw_offset, duration=0.8)
+                #self.timeHelper.sleep(1/120)
             self.get_logger().info(f"Hovering at position: {self.target_position}")
 
         elif self.state == 'land':
             self.cf.land(targetHeight=0.0, duration=2.0)
             self.timeHelper.sleep(2.0)
-            self.get_logger().info("Landing complete. Returning to idle state.")
+            self.cf.land(targetHeight=0.0, duration=2.0)
+            self.timeHelper.sleep(2.0)
+            self.cf.land(targetHeight=0.0, duration=2.0)
+            self.timeHelper.sleep(2.0)
+            self.get_logger().info("Landing complete.")
             self.destroy_timer(self.timer)
 
         elif self.state == 'idle':
             self.get_logger().info("Idle state. Waiting for commands...")
 
+        self.first_loop = False
 
 def main(args=None):
 

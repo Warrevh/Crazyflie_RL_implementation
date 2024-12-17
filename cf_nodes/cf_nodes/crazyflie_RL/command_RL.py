@@ -27,9 +27,6 @@ def main():
     drone_id = 'cf20'
     final_target = np.array([2.5,2,0.2])
 
-    #model_path = "data/SAC_save-12.07.2024_22.03.53/best_model.zip"
-    #model = RlModel(model_path)
-
     rclpy.init()
 
     node = DronePosition(drone_id,final_target)
@@ -42,7 +39,7 @@ def main():
     finally:
         node.destroy_node()
         rclpy.shutdown()
-        print('test')
+        print('test_shutdown')
     
     """
     pos = np.zeros((1,3))
@@ -62,27 +59,12 @@ def main():
 if __name__ == "__main__":
     main()
 
-class RlModel():
-    def __init__(self,model_path):
-
-        self.model = SAC.load(Path(__file__).parent / model_path)
-
-    def get_action(self,obs):
-        action, _states = self.model.predict(obs,deterministic=True)   
-
-        return action    
-    
-    def step(self,action_,pos_):
-        pos = pos_[0]
-        action = action_[0]
-        target_pos = pos[0:3]+0.1*np.array([action[0],action[1],0])
-        return target_pos
-
 class DronePosition(Node):
     def __init__(self,drone_id,final_target):
         super().__init__('drone_position_node')
         self.drone_id = drone_id
         self.final_target = final_target
+        self.freq = 60.0
 
         self.publisher = self.create_publisher(String, 'drone_command', 10)
 
@@ -92,7 +74,7 @@ class DronePosition(Node):
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
         
-        self.timer = self.create_timer(1/240 , self.run_drone)
+        self.timer = self.create_timer(1/self.freq , self.run_drone)
         self.prev_time = None
 
         self.prev_pos = None
@@ -104,21 +86,25 @@ class DronePosition(Node):
         
         self.obs = None
         self.log_obs = Logger_obs()
+        self.kalman = KalmanFilterAll()
+        self.SMA = SMAFilter()
 
-        self.min_pos = np.array([0,0,0])
+        self.min_pos = np.array([0,0,-1])
         self.max_pos = np.array([5,4,1]) # if the drone goes outside of these boundrys it stops
 
         self.translation_world_to_local = [-2.0, 2.5, 0.0]
         rotation_world_to_local_eul = [0.0, 0.0, -np.pi / 2]
         self.rotation_world_to_local_qua = tf_transformations.quaternion_from_euler(rotation_world_to_local_eul[0], rotation_world_to_local_eul[1], rotation_world_to_local_eul[2])
 
-        model_path = "data/SAC_save-12.07.2024_22.03.53/best_model.zip"
+        model_path = "data/trained_SAC_save-12.16.2024_01.10.16/best_model.zip"
         self.model = RlModel(model_path)
 
     def run_drone(self):
         try:
             self.obs = self.get_obs()
-            self.log_obs.log_obs(self.obs)
+            obs_flat = self.log_obs.log_obs(self.obs)
+            obs_filterd = self.SMA.filter(self.log_obs.all_obs[-int(self.freq/4):,:]) #obs_filterd = self.kalman.kalman_filter_all(obs_flat)
+            self.obs = self.filterd_obs(obs_filterd)
             transform = self.tf_buffer.lookup_transform('world', 'local_frame', rclpy.time.Time())
             self.alive = self.alive_check()
 
@@ -126,7 +112,8 @@ class DronePosition(Node):
                 if np.linalg.norm(self.final_target[0:2]-self.pos[0,0:2]) < 0.2:
                     self.command = 'land'
                     self.sendCommand()
-                    self.log_obs.save_obs()
+                    self.log_obs.save_obs(self.log_obs.file_name,self.log_obs.all_obs)
+                    self.log_obs.save_obs(self.SMA.file_name,self.SMA.filtered_data_all)
                     self.destroy_timer(self.timer)
                     
                 else:
@@ -146,7 +133,7 @@ class DronePosition(Node):
 
     def get_obs(self):
         transform: TransformStamped = self.tf_buffer.lookup_transform('local_frame', self.drone_id, rclpy.time.Time())
-            
+          
         position = transform.transform.translation
         quaternion = transform.transform.rotation
         current_time = self.get_clock().now()
@@ -179,6 +166,16 @@ class DronePosition(Node):
         }
         
         return obs
+    
+    def filterd_obs(self,data):
+        data = np.array([data])
+        obs = {
+            "Position": np.array([data[i,0:3] for i in range(1)]).astype('float32'),
+            "Velocity": np.array([data[i,3:6] for i in range(1)]).astype('float32'),
+            "rpy": np.array([data[i,6:9] for i in range(1)]).astype('float32'),
+            "ang_v": np.array([data[i,9:12] for i in range(1)]).astype('float32'),
+        }
+        return obs
 
     def alive_check(self):
         if (self.min_pos[0] < self.pos[0,0] < self.max_pos[0] and
@@ -191,7 +188,8 @@ class DronePosition(Node):
         if not alive:
             self.command = 'emergency'
             self.sendCommand()
-            self.log_obs.save_obs()
+            self.log_obs.save_obs(self.log_obs.file_name,self.log_obs.all_obs)
+            self.log_obs.save_obs(self.SMA.file_name,self.SMA.filtered_data_all)
             self.destroy_timer(self.timer)
 
         return alive
@@ -224,6 +222,24 @@ class DronePosition(Node):
 
         return world_homogeneous
 
+class RlModel():
+    def __init__(self,model_path):
+
+        self.model = SAC.load(Path(__file__).parent / model_path)
+
+    def get_action(self,obs):
+        action, _states = self.model.predict(obs,deterministic=True)   
+        #action = np.array([[-1,0]])
+
+        return action    
+    
+    def step(self,action_,pos_):
+        pos = pos_[0]
+        action = action_[0]
+        target_pos = pos[0:3]+0.1*np.array([action[0],action[1],0])
+        return target_pos
+    
+
 class Logger_obs():
     def __init__(self):
 
@@ -231,8 +247,7 @@ class Logger_obs():
         self.output_folder= Path(__file__).parent / 'results'
         self.file_name = str(self.output_folder / f"obs_log_{current_time}.txt")
 
-        self.all_obs = []
-
+        self.all_obs = np.empty((0, 12))
         print('logpath created')
 
     def log_obs(self,obs):
@@ -242,9 +257,10 @@ class Logger_obs():
             obs["rpy"][0][0], obs["rpy"][0][1], obs["rpy"][0][2],                # Roll, Pitch, Yaw
             obs["ang_v"][0][0], obs["ang_v"][0][1], obs["ang_v"][0][2]          # Angular velocity (x, y, z)
         ]
-        self.all_obs.append(flattened_obs)  # Append the observation to the log
+        self.all_obs= np.vstack([self.all_obs,flattened_obs])  # Append the observation to the log
+        return flattened_obs
 
-    def save_obs(self):
+    def save_obs(self,file_name,all_obs):
         headers = [
             "Position_x", "Position_y", "Position_z",
             "Velocity_x", "Velocity_y", "Velocity_z",
@@ -253,8 +269,71 @@ class Logger_obs():
         ]
         
         # Write the collected data to a CSV file
-        with open(self.file_name, mode="w", newline="") as file:
+        with open(file_name, mode="w", newline="") as file:
             writer = csv.writer(file)
             writer.writerow(headers)  # Write the header row
-            writer.writerows(self.all_obs)  # Write all the collected data
-            print("observation written to file "+ self.file_name)
+            writer.writerows(all_obs)  # Write all the collected data
+            print("observation written to file "+ file_name)
+
+
+class KalmanFilter:
+    def __init__(self, process_variance, measurement_variance, initial_state=0, initial_uncertainty=1):
+        self.process_variance = process_variance  # Variance in the system (e.g., how much we trust the model)
+        self.measurement_variance = measurement_variance  # Variance in the measurement
+        self.state = initial_state  # Initial estimate
+        self.uncertainty = initial_uncertainty  # Initial uncertainty
+        self.kalman_gain = 0
+
+    def apply(self, new_measurement):
+        # Prediction step (we assume no motion, so state remains constant)
+        self.uncertainty += self.process_variance
+        
+        # Measurement update step
+        self.kalman_gain = self.uncertainty / (self.uncertainty + self.measurement_variance)
+        self.state = self.state + self.kalman_gain * (new_measurement - self.state)
+        self.uncertainty = (1 - self.kalman_gain) * self.uncertainty
+
+        return self.state
+    
+
+class KalmanFilterAll():
+    def __init__(self):
+        self.filtered_data_all = []
+
+        current_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+        self.output_folder= Path(__file__).parent / 'results'
+        self.file_name = str(self.output_folder / f"obs_log_filterd_{current_time}.txt")
+
+        self.kalman_velx = KalmanFilter(process_variance=1e-3,measurement_variance=10e-1,initial_state=0,initial_uncertainty=1)
+        self.kalman_vely = KalmanFilter(process_variance=1e-3,measurement_variance=10e-1,initial_state=0,initial_uncertainty=1)
+        self.kalman_angx = KalmanFilter(process_variance=1e-3,measurement_variance=10e-1,initial_state=0,initial_uncertainty=1)
+        self.kalman_angy = KalmanFilter(process_variance=1e-3,measurement_variance=10e-1,initial_state=0,initial_uncertainty=1)
+        
+    def kalman_filter_all(self,data):
+        data[3] = self.kalman_velx.apply(data[3]) #velocity_x
+        data[4] = self.kalman_vely.apply(data[4]) #velocity_y
+        data[9] = self.kalman_angx.apply(data[9]) #AngularVelocity_x
+        data[10] = self.kalman_angy.apply(data[10]) #AngularVelocity_y
+
+        self.filtered_data_all.append(data)
+        return data
+
+
+class SMAFilter:
+    def __init__(self):
+        self.filtered_data_all = []
+
+        current_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+        self.output_folder= Path(__file__).parent / 'results'
+        self.file_name = str(self.output_folder / f"obs_log_filterd_{current_time}.txt")
+
+    def filter(self,data):
+        filtered_data = [0,0,0,0,0,0,0,0,0,0,0,0]
+        for i in range(len(filtered_data)):
+            filtered_data[i] = np.mean(data[:,i])
+
+
+        self.filtered_data_all.append(filtered_data)
+        return filtered_data
+    
+
