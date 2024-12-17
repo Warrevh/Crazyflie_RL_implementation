@@ -1,13 +1,13 @@
 #!/usr/bin/env python
 
-import sys
+#import sys
 import time
 import numpy as np
 from pathlib import Path
 from crazyflie_py import Crazyswarm
 import csv
-import os
-import datetime
+#import os
+#import datetime
 
 from stable_baselines3 import SAC
 
@@ -18,7 +18,7 @@ from geometry_msgs.msg import TransformStamped
 from std_msgs.msg import String
 import tf_transformations
 
-from scipy.spatial.transform import Rotation as R
+#from scipy.spatial.transform import Rotation as R
 
 #from crazyflie_RL.droneposition import DronePosition
 #from crazyflie_RL.rl_model import RlModel
@@ -40,21 +40,6 @@ def main():
         node.destroy_node()
         rclpy.shutdown()
         print('test_shutdown')
-    
-    """
-    pos = np.zeros((1,3))
-    vel = np.zeros((1,3))
-    rpy = np.zeros((1,3))
-    ang_v = np.zeros((1,3))
-
-    obs = {
-        "Position": np.array([pos[i,:] for i in range(1)]).astype('float32'),
-        "Velocity": np.array([vel[i,:] for i in range(1)]).astype('float32'),
-        "rpy": np.array([rpy[i,:] for i in range(1)]).astype('float32'),
-        "ang_v": np.array([ang_v[i,:] for i in range(1)]).astype('float32'),
-    }
-
-    """
 
 if __name__ == "__main__":
     main()
@@ -64,7 +49,7 @@ class DronePosition(Node):
         super().__init__('drone_position_node')
         self.drone_id = drone_id
         self.final_target = final_target
-        self.freq = 60.0
+        self.freq = 240.0
 
         self.publisher = self.create_publisher(String, 'drone_command', 10)
 
@@ -96,14 +81,14 @@ class DronePosition(Node):
         rotation_world_to_local_eul = [0.0, 0.0, -np.pi / 2]
         self.rotation_world_to_local_qua = tf_transformations.quaternion_from_euler(rotation_world_to_local_eul[0], rotation_world_to_local_eul[1], rotation_world_to_local_eul[2])
 
-        model_path = "data/trained_SAC_save-12.16.2024_01.10.16/best_model.zip"
+        model_path = "data/SAC_save-12.16.2024_22.50.49/best_model.zip"
         self.model = RlModel(model_path)
 
     def run_drone(self):
         try:
             self.obs = self.get_obs()
             obs_flat = self.log_obs.log_obs(self.obs)
-            obs_filterd = self.SMA.filter(self.log_obs.all_obs[-int(self.freq/4):,:]) #obs_filterd = self.kalman.kalman_filter_all(obs_flat)
+            obs_filterd = self.SMA.filter(self.log_obs.all_obs[-int(20):,:]) #obs_filterd = self.kalman.kalman_filter_all(obs_flat)
             self.obs = self.filterd_obs(obs_filterd)
             transform = self.tf_buffer.lookup_transform('world', 'local_frame', rclpy.time.Time())
             self.alive = self.alive_check()
@@ -330,7 +315,10 @@ class SMAFilter:
     def filter(self,data):
         filtered_data = [0,0,0,0,0,0,0,0,0,0,0,0]
         for i in range(len(filtered_data)):
-            filtered_data[i] = np.mean(data[:,i])
+            if i < 3 or 5 < i < 9:
+                filtered_data[i] = data[-1,i]
+            else:
+                filtered_data[i] = np.mean(data[:,i])
 
 
         self.filtered_data_all.append(filtered_data)

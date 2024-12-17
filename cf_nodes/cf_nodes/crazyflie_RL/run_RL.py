@@ -90,7 +90,7 @@ class CrazyflieNode(Node):
                 self.cf.goTo([x, y, self.z], yaw=self.yaw_offset, duration=2)
                 self.timeHelper.sleep(2)
             else:
-                self.cf.goTo([x, y, self.z], yaw=self.yaw_offset, duration=0.8)
+                self.cf.goTo([x, y, self.z], yaw=self.yaw_offset, duration=0.7)
                 #self.timeHelper.sleep(1/120)
             self.get_logger().info(f"Hovering at position: {self.target_position}")
 
