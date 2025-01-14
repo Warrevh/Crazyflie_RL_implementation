@@ -1,6 +1,7 @@
 # Crazyflie RL navigation IN VISIONEN
 
-This repository upon https://gitlab.liu.se/visionen/ros2/crazyswarm2
+This repository is build upon https://gitlab.liu.se/visionen/ros2/crazyswarm2
+
 Please take a look at that repository for install instructions.
 
 The added code can be found under cf_nodes/cf_nodes/crazyflie_RL
