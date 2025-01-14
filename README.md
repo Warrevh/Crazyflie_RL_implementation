@@ -4,11 +4,11 @@ This repository is build upon https://gitlab.liu.se/visionen/ros2/crazyswarm2
 
 Please take a look at that repository for install instructions.
 
-
 The added code can be found under cf_nodes/cf_nodes/crazyflie_RL
 
-After following the install instructions and launching crazyflie the following scripts should be launched:
+This code is to test trained models in the real world.
 
+After following the install instructions and launching crazyflie the following scripts should be launched:
 
 First "local_frame.py" should be launched: `ros2 run cf_nodes local_frame`
 
