@@ -21,5 +21,7 @@ To fly the drone "run_RL.py" is launched: `ros2 run cf_nodes run_RL`
 The drone will take off and fly to the target.
 
 
-After the drone reaches the goal or crashes it is recommended to restart all codes except "local_frame"
+After the drone reaches the goal or crashes it is recommended to restart all codes except "local_frame".
+
+Starting the drone before the "launch" script is also advised.
 
