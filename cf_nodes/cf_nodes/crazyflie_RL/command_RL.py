@@ -18,10 +18,6 @@ from geometry_msgs.msg import TransformStamped
 from std_msgs.msg import String
 import tf_transformations
 
-#from scipy.spatial.transform import Rotation as R
-
-#from crazyflie_RL.droneposition import DronePosition
-#from crazyflie_RL.rl_model import RlModel
 
 def main():
     drone_id = 'cf20'
@@ -71,7 +67,6 @@ class DronePosition(Node):
         
         self.obs = None
         self.log_obs = Logger_obs()
-        self.kalman = KalmanFilterAll()
         self.SMA = SMAFilter()
 
         self.min_pos = np.array([0,0,-1])
@@ -81,7 +76,7 @@ class DronePosition(Node):
         rotation_world_to_local_eul = [0.0, 0.0, -np.pi / 2]
         self.rotation_world_to_local_qua = tf_transformations.quaternion_from_euler(rotation_world_to_local_eul[0], rotation_world_to_local_eul[1], rotation_world_to_local_eul[2])
 
-        model_path = "data/SAC_save-12.16.2024_22.50.49/best_model.zip"
+        model_path = "data/SAC_save-01.15.2025_00.49.25/best_model.zip"
         self.model = RlModel(model_path)
 
     def run_drone(self):
@@ -94,7 +89,7 @@ class DronePosition(Node):
             self.alive = self.alive_check()
 
             if self.alive:
-                if np.linalg.norm(self.final_target[0:2]-self.pos[0,0:2]) < 0.2:
+                if np.linalg.norm(self.final_target[0:2]-self.pos[0,0:2]) < 0.15:
                     self.command = 'land'
                     self.sendCommand()
                     self.log_obs.save_obs(self.log_obs.file_name,self.log_obs.all_obs)
@@ -224,7 +219,6 @@ class RlModel():
         target_pos = pos[0:3]+0.1*np.array([action[0],action[1],0])
         return target_pos
     
-
 class Logger_obs():
     def __init__(self):
 
@@ -259,50 +253,6 @@ class Logger_obs():
             writer.writerow(headers)  # Write the header row
             writer.writerows(all_obs)  # Write all the collected data
             print("observation written to file "+ file_name)
-
-
-class KalmanFilter:
-    def __init__(self, process_variance, measurement_variance, initial_state=0, initial_uncertainty=1):
-        self.process_variance = process_variance  # Variance in the system (e.g., how much we trust the model)
-        self.measurement_variance = measurement_variance  # Variance in the measurement
-        self.state = initial_state  # Initial estimate
-        self.uncertainty = initial_uncertainty  # Initial uncertainty
-        self.kalman_gain = 0
-
-    def apply(self, new_measurement):
-        # Prediction step (we assume no motion, so state remains constant)
-        self.uncertainty += self.process_variance
-        
-        # Measurement update step
-        self.kalman_gain = self.uncertainty / (self.uncertainty + self.measurement_variance)
-        self.state = self.state + self.kalman_gain * (new_measurement - self.state)
-        self.uncertainty = (1 - self.kalman_gain) * self.uncertainty
-
-        return self.state
-    
-
-class KalmanFilterAll():
-    def __init__(self):
-        self.filtered_data_all = []
-
-        current_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
-        self.output_folder= Path(__file__).parent / 'results'
-        self.file_name = str(self.output_folder / f"obs_log_filterd_{current_time}.txt")
-
-        self.kalman_velx = KalmanFilter(process_variance=1e-3,measurement_variance=10e-1,initial_state=0,initial_uncertainty=1)
-        self.kalman_vely = KalmanFilter(process_variance=1e-3,measurement_variance=10e-1,initial_state=0,initial_uncertainty=1)
-        self.kalman_angx = KalmanFilter(process_variance=1e-3,measurement_variance=10e-1,initial_state=0,initial_uncertainty=1)
-        self.kalman_angy = KalmanFilter(process_variance=1e-3,measurement_variance=10e-1,initial_state=0,initial_uncertainty=1)
-        
-    def kalman_filter_all(self,data):
-        data[3] = self.kalman_velx.apply(data[3]) #velocity_x
-        data[4] = self.kalman_vely.apply(data[4]) #velocity_y
-        data[9] = self.kalman_angx.apply(data[9]) #AngularVelocity_x
-        data[10] = self.kalman_angy.apply(data[10]) #AngularVelocity_y
-
-        self.filtered_data_all.append(data)
-        return data
-
 
 class SMAFilter:
     def __init__(self):

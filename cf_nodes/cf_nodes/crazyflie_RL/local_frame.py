@@ -42,7 +42,6 @@ class LocalFrameBroadcaster(Node):
         # Broadcast the transformation
         self.br.sendTransform(t)
 
-
 def main(args=None):
     rclpy.init(args=args)
     node = LocalFrameBroadcaster()

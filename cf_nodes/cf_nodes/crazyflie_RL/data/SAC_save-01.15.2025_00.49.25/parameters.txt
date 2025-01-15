@@ -1,0 +1,35 @@
+PARAMETERS
+
+
+initial_xyzs: [[4.5 3.5 0.2]]
+random_initial_pos: True
+obs_noise: True
+ctrl_freq: 240
+Target_pos: [2.5 2.  0.2]
+episode_length: 60
+Learning_rate: 0.001
+learning_starts: 100000
+batch_size: 256
+use_sde: False
+sde_sample_freq: -1
+Target_reward: 15000
+Rew_distrav_fact: 0
+Rew_disway_fact: 0.01
+Rew_step_fact: 0
+Rew_direct_fact: 100
+Rew_angvel_fact: 5
+Rew_collision: -100
+Rew_terminated: 1000
+eval_freq: 1
+eval_episodes: 5
+position: True
+velocity: True
+rpy: True
+ang_v: True
+prev_act: False
+number_of_env: 1
+Total_timesteps: 3000000
+train_freq: 1
+gradient_steps: -1
+Reward_Function: (-self.Rew_distrav_fact*(np.linalg.norm(self.reward_state[0:2]-prev_state[0:2]))+self.Rew_disway_fact*max(0,2-np.linalg.norm(self.TARGET_POS[0:2]-self.reward_state[0:2])**4)-self.Rew_step_fact*1 +self.Rew_tardis_fact*(prev_tar_dis-self.target_dis)-self.Rew_angvel_fact*(np.sum((self.angvel-prev_angvel)**2)))
+parent_model: none

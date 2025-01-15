@@ -35,7 +35,7 @@ class CrazyflieNode(Node):
         self.get_logger().info("Crazyflie node initialized and ready for commands.")
 
     def command_callback(self, msg):
-        """Callback function to process received commands."""
+        #Callback function to process received commands
         command = msg.data.lower()
         self.get_logger().info(f"Received command: {command}")
 
@@ -68,7 +68,7 @@ class CrazyflieNode(Node):
             self.get_logger().warn(f"Unknown command: {command}")
 
     def control_loop(self):
-        """Control loop that performs actions based on the current state."""
+        #Control loop that performs actions based on the current state
         if self.state == 'emergency':
             self.cf.emergency()
             self.get_logger().info("emergency")
