@@ -18,10 +18,6 @@ from geometry_msgs.msg import TransformStamped
 from std_msgs.msg import String
 import tf_transformations
 
-#from scipy.spatial.transform import Rotation as R
-
-#from crazyflie_RL.droneposition import DronePosition
-#from crazyflie_RL.rl_model import RlModel
 
 def main():
     drone_id = 'cf20'
@@ -71,7 +67,6 @@ class DronePosition(Node):
         
         self.obs = None
         self.log_obs = Logger_obs()
-        self.kalman = KalmanFilterAll()
         self.SMA = SMAFilter()
 
         self.min_pos = np.array([0,0,-1])
@@ -81,7 +76,7 @@ class DronePosition(Node):
         rotation_world_to_local_eul = [0.0, 0.0, -np.pi / 2]
         self.rotation_world_to_local_qua = tf_transformations.quaternion_from_euler(rotation_world_to_local_eul[0], rotation_world_to_local_eul[1], rotation_world_to_local_eul[2])
 
-        model_path = "data/SAC_save-01.02.2025_22.55.34/best_model.zip"
+        model_path = "data/SAC_save-01.15.2025_00.49.25/best_model.zip"
         self.model = RlModel(model_path)
 
     def run_drone(self):
@@ -94,7 +89,7 @@ class DronePosition(Node):
             self.alive = self.alive_check()
 
             if self.alive:
-                if np.linalg.norm(self.final_target[0:2]-self.pos[0,0:2]) < 0.2:
+                if np.linalg.norm(self.final_target[0:2]-self.pos[0,0:2]) < 0.15:
                     self.command = 'land'
                     self.sendCommand()
                     self.log_obs.save_obs(self.log_obs.file_name,self.log_obs.all_obs)
