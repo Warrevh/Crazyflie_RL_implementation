@@ -25,3 +25,5 @@ After the drone reaches the goal or crashes it is recommended to restart all cod
 
 Starting the drone before the "launch" script is also advised.
 
+[Result of 10 tests](cf_nodes/cf_nodes/crazyflie_RL/implementation_test_data/10_runs_in_lab_with_SAC.png)
+
